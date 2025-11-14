@@ -53,8 +53,9 @@ def create_app(state: DTState) -> Flask:
 		if not placements:
 			return jsonify({"error": "no feasible placements found", "stages": [s.id for s in job.stages]}), 400
 		metrics = sim.score_plan(job, placements)
+		plan_id = f"plan-{uuid.uuid4().hex[:8]}"
 		response = {
-			"plan_id": f"plan-{uuid.uuid4().hex[:8]}",
+			"plan_id": plan_id,
 			"placements": {
 				stage_id: {
 					"stage_id": stage_id,
@@ -69,7 +70,13 @@ def create_app(state: DTState) -> Flask:
 			"shadow_plan": {f"{sid}_backup": dec.node_name for sid, dec in placements.items()},
 		}
 		if not dry_run:
-			actuator.submit_plan(job, placements)
+			try:
+				actuator.submit_plan(job, placements, plan_id=plan_id)
+			except Exception as e:
+				# Log error but don't fail the API response
+				# The plan was already computed and returned
+				import logging
+				logging.getLogger(__name__).error(f"Failed to submit plan {plan_id}: {e}")
 		return jsonify(response)
 
 	@app.post("/observe")

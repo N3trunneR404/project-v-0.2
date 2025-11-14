@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY dt/ /app/dt/
+COPY k8s_executor/ /app/k8s_executor/
 COPY app.py /app/
 COPY gunicorn_config.py /app/
 
