@@ -1,0 +1,23 @@
+worker:
+  config:
+    core:
+      sources:
+        - cpu
+        - memory
+        - pci
+        - system
+        - usb
+    sources:
+      custom:
+        - name: dt.labels
+          matchOn:
+            - dmidecode:
+                - any: ["DT-SIM"]
+          labels:
+            dt.tier: "edge"
+            dt.zone: "zone-a"
+
+
+
+
+

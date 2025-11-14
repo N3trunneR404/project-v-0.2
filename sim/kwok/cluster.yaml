@@ -1,0 +1,27 @@
+apiVersion: config.kwok.x-k8s.io/v1alpha1
+kind: KwokConfiguration
+metadata:
+  name: kwok-config
+cluster:
+  name: kwok-cluster
+  # This configuration is a template for KWOK to simulate many nodes cheaply.
+nodeTemplate:
+  count: 120
+  template:
+    metadata:
+      labels:
+        beta.kubernetes.io/arch: amd64
+        dt.tier: edge
+        dt.zone: zone-a
+    status:
+      allocatable:
+        cpu: "4"
+        memory: "8Gi"
+      capacity:
+        cpu: "4"
+        memory: "8Gi"
+
+
+
+
+

@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dt-scorer
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dt-scorer
+  template:
+    metadata:
+      labels:
+        app: dt-scorer
+    spec:
+      containers:
+        - name: scorer
+          image: dt-scorer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dt-scorer
+  namespace: kube-system
+spec:
+  selector:
+    app: dt-scorer
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+
+
+
+
+

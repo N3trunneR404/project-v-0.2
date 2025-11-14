@@ -1,0 +1,12 @@
+FROM ubuntu:22.04
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  stress-ng curl bc ca-certificates && \
+  rm -rf /var/lib/apt/lists/*
+COPY worker.sh /worker.sh
+RUN chmod +x /worker.sh
+ENTRYPOINT ["/worker.sh"]
+
+
+
+
+

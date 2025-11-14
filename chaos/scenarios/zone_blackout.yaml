@@ -1,0 +1,24 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: zone-blackout
+  namespace: chaos-mesh
+spec:
+  entry: blackout
+  templates:
+    - name: blackout
+      templateType: PodChaos
+      deadline: 60s
+      podChaos:
+        action: pod-failure
+        mode: all
+        selector:
+          namespaces:
+            - dt-fabric
+          labelSelectors:
+            dt.zone: zone-a
+
+
+
+
+

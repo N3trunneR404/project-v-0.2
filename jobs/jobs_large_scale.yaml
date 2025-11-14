@@ -1,0 +1,491 @@
+# jobs/jobs_large_scale.yaml
+# Large-scale realistic jobs for 100-node Fabric DT validation
+# These jobs simulate heavy load scenarios with realistic resource requirements
+# that will stress-test the DT scheduler and show improvements over traditional schedulers
+
+jobs:
+  # Large-scale ML Training Pipeline (High CPU, GPU, Memory)
+  - id: job-ml-training-large
+    deadline_ms: 30000
+    stages:
+      - id: s1_data_ingest
+        type: io
+        size_mb: 5000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s2_preprocessing
+        type: preproc
+        size_mb: 8000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s3_model_training
+        type: mlp
+        size_mb: 12000
+        resources: { cpu_cores: 24, mem_gb: 128, gpu_vram_gb: 16 }
+        allowed_formats: [cuda, native]
+      - id: s4_validation
+        type: analytics
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s5_model_export
+        type: postproc
+        size_mb: 2000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+
+  # Distributed Data Processing (High CPU, Memory, Network)
+  - id: job-distributed-analytics
+    deadline_ms: 25000
+    stages:
+      - id: s1_data_shard
+        type: analytics
+        size_mb: 10000
+        resources: { cpu_cores: 20, mem_gb: 80 }
+        allowed_formats: [native, wasm]
+      - id: s2_parallel_compute
+        type: analytics
+        size_mb: 15000
+        resources: { cpu_cores: 32, mem_gb: 128 }
+        allowed_formats: [native, wasm]
+      - id: s3_aggregate
+        type: analytics
+        size_mb: 8000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s4_visualization
+        type: viz
+        size_mb: 2000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+
+  # Real-time Video Processing Pipeline (GPU-intensive)
+  - id: job-video-realtime-large
+    deadline_ms: 15000
+    stages:
+      - id: s1_video_capture
+        type: io
+        size_mb: 2000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+      - id: s2_frame_extraction
+        type: preproc
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s3_object_detection
+        type: cv
+        size_mb: 6000
+        resources: { cpu_cores: 16, mem_gb: 64, gpu_vram_gb: 12 }
+        allowed_formats: [cuda, native]
+      - id: s4_tracking
+        type: analytics
+        size_mb: 3000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s5_rendering
+        type: viz
+        size_mb: 2000
+        resources: { cpu_cores: 6, mem_gb: 24, gpu_vram_gb: 4 }
+        allowed_formats: [cuda, native]
+
+  # HPC Scientific Computing (Very High CPU, Memory)
+  - id: job-hpc-simulation
+    deadline_ms: 45000
+    stages:
+      - id: s1_input_prep
+        type: preproc
+        size_mb: 8000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native]
+      - id: s2_parallel_solve
+        type: analytics
+        size_mb: 20000
+        resources: { cpu_cores: 48, mem_gb: 192, gpu_vram_gb: 16 }
+        allowed_formats: [cuda, native]
+      - id: s3_result_analysis
+        type: analytics
+        size_mb: 10000
+        resources: { cpu_cores: 24, mem_gb: 96 }
+        allowed_formats: [native]
+      - id: s4_output_gen
+        type: postproc
+        size_mb: 5000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+
+  # Multi-region Federated Learning (Network-intensive)
+  - id: job-federated-learning
+    deadline_ms: 35000
+    stages:
+      - id: s1_local_training
+        type: mlp
+        size_mb: 6000
+        resources: { cpu_cores: 20, mem_gb: 80, gpu_vram_gb: 8 }
+        allowed_formats: [cuda, native]
+      - id: s2_model_aggregation
+        type: analytics
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s3_global_update
+        type: mlp
+        size_mb: 5000
+        resources: { cpu_cores: 16, mem_gb: 64, gpu_vram_gb: 6 }
+        allowed_formats: [cuda, native]
+      - id: s4_distribution
+        type: io
+        size_mb: 3000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+
+  # Big Data ETL Pipeline (Memory-intensive)
+  - id: job-bigdata-etl
+    deadline_ms: 40000
+    stages:
+      - id: s1_extract
+        type: io
+        size_mb: 15000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s2_transform
+        type: analytics
+        size_mb: 18000
+        resources: { cpu_cores: 32, mem_gb: 128 }
+        allowed_formats: [native, wasm]
+      - id: s3_load
+        type: io
+        size_mb: 12000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s4_indexing
+        type: analytics
+        size_mb: 8000
+        resources: { cpu_cores: 20, mem_gb: 80 }
+        allowed_formats: [native, wasm]
+
+  # AI Inference Service (Low latency, GPU)
+  - id: job-ai-inference-batch
+    deadline_ms: 8000
+    stages:
+      - id: s1_request_batch
+        type: io
+        size_mb: 1000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+      - id: s2_preprocessing
+        type: preproc
+        size_mb: 2000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s3_inference
+        type: mlp
+        size_mb: 3000
+        resources: { cpu_cores: 12, mem_gb: 48, gpu_vram_gb: 10 }
+        allowed_formats: [cuda, native]
+      - id: s4_postprocessing
+        type: postproc
+        size_mb: 1000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+
+  # Multi-stage ML Pipeline (Complex dependencies)
+  - id: job-ml-pipeline-complex
+    deadline_ms: 50000
+    stages:
+      - id: s1_feature_extraction
+        type: preproc
+        size_mb: 12000
+        resources: { cpu_cores: 24, mem_gb: 96 }
+        allowed_formats: [native, wasm]
+      - id: s2_feature_selection
+        type: analytics
+        size_mb: 8000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s3_model_training
+        type: mlp
+        size_mb: 15000
+        resources: { cpu_cores: 32, mem_gb: 128, gpu_vram_gb: 16 }
+        allowed_formats: [cuda, native]
+      - id: s4_hyperparameter_tuning
+        type: analytics
+        size_mb: 10000
+        resources: { cpu_cores: 20, mem_gb: 80, gpu_vram_gb: 8 }
+        allowed_formats: [cuda, native]
+      - id: s5_model_evaluation
+        type: analytics
+        size_mb: 6000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s6_deployment_prep
+        type: postproc
+        size_mb: 3000
+        resources: { cpu_cores: 6, mem_gb: 24 }
+        allowed_formats: [native, wasm]
+
+  # High-throughput Stream Processing
+  - id: job-stream-processing
+    deadline_ms: 12000
+    stages:
+      - id: s1_stream_ingest
+        type: io
+        size_mb: 3000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s2_window_processing
+        type: analytics
+        size_mb: 5000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s3_aggregation
+        type: analytics
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+      - id: s4_output_stream
+        type: io
+        size_mb: 2000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+
+  # Cross-region Data Migration (Network-heavy)
+  - id: job-data-migration
+    deadline_ms: 30000
+    stages:
+      - id: s1_source_read
+        type: io
+        size_mb: 20000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s2_compression
+        type: preproc
+        size_mb: 15000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s3_transfer
+        type: io
+        size_mb: 12000
+        resources: { cpu_cores: 4, mem_gb: 16 }
+        allowed_formats: [native, wasm]
+      - id: s4_decompression
+        type: preproc
+        size_mb: 15000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native, wasm]
+      - id: s5_target_write
+        type: io
+        size_mb: 20000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+
+  # Mixed Workload (CPU + GPU + Memory)
+  - id: job-mixed-workload-heavy
+    deadline_ms: 35000
+    stages:
+      - id: s1_cpu_intensive
+        type: analytics
+        size_mb: 10000
+        resources: { cpu_cores: 40, mem_gb: 160 }
+        allowed_formats: [native, wasm]
+      - id: s2_gpu_accelerated
+        type: cv
+        size_mb: 8000
+        resources: { cpu_cores: 8, mem_gb: 32, gpu_vram_gb: 16 }
+        allowed_formats: [cuda, native]
+      - id: s3_memory_intensive
+        type: analytics
+        size_mb: 12000
+        resources: { cpu_cores: 24, mem_gb: 192 }
+        allowed_formats: [native, wasm]
+      - id: s4_final_processing
+        type: postproc
+        size_mb: 6000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+
+  # Edge-to-Cloud Pipeline (Heterogeneous)
+  - id: job-edge-cloud-pipeline
+    deadline_ms: 20000
+    stages:
+      - id: s1_edge_collection
+        type: io
+        size_mb: 2000
+        resources: { cpu_cores: 2, mem_gb: 4 }
+        allowed_formats: [wasm, native]
+      - id: s2_edge_preprocessing
+        type: preproc
+        size_mb: 3000
+        resources: { cpu_cores: 4, mem_gb: 8 }
+        allowed_formats: [wasm, native]
+      - id: s3_cloud_processing
+        type: analytics
+        size_mb: 8000
+        resources: { cpu_cores: 24, mem_gb: 96 }
+        allowed_formats: [native]
+      - id: s4_cloud_ml
+        type: mlp
+        size_mb: 6000
+        resources: { cpu_cores: 16, mem_gb: 64, gpu_vram_gb: 12 }
+        allowed_formats: [cuda, native]
+      - id: s5_edge_delivery
+        type: io
+        size_mb: 1000
+        resources: { cpu_cores: 2, mem_gb: 4 }
+        allowed_formats: [wasm, native]
+
+  # Database Analytics (High Memory)
+  - id: job-database-analytics
+    deadline_ms: 25000
+    stages:
+      - id: s1_query_execution
+        type: analytics
+        size_mb: 15000
+        resources: { cpu_cores: 28, mem_gb: 112 }
+        allowed_formats: [native, wasm]
+      - id: s2_join_operations
+        type: analytics
+        size_mb: 18000
+        resources: { cpu_cores: 32, mem_gb: 128 }
+        allowed_formats: [native, wasm]
+      - id: s3_aggregation
+        type: analytics
+        size_mb: 12000
+        resources: { cpu_cores: 20, mem_gb: 80 }
+        allowed_formats: [native, wasm]
+      - id: s4_result_formatting
+        type: postproc
+        size_mb: 4000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+
+  # Real-time Recommendation System
+  - id: job-recommendation-realtime
+    deadline_ms: 6000
+    stages:
+      - id: s1_user_context
+        type: io
+        size_mb: 500
+        resources: { cpu_cores: 2, mem_gb: 8 }
+        allowed_formats: [native, wasm]
+      - id: s2_feature_lookup
+        type: analytics
+        size_mb: 2000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s3_model_inference
+        type: mlp
+        size_mb: 3000
+        resources: { cpu_cores: 12, mem_gb: 48, gpu_vram_gb: 8 }
+        allowed_formats: [cuda, native]
+      - id: s4_ranking
+        type: analytics
+        size_mb: 1500
+        resources: { cpu_cores: 6, mem_gb: 24 }
+        allowed_formats: [native, wasm]
+
+  # Scientific Data Analysis (Very High Resources)
+  - id: job-scientific-analysis
+    deadline_ms: 60000
+    stages:
+      - id: s1_data_load
+        type: io
+        size_mb: 25000
+        resources: { cpu_cores: 16, mem_gb: 64 }
+        allowed_formats: [native]
+      - id: s2_statistical_analysis
+        type: analytics
+        size_mb: 30000
+        resources: { cpu_cores: 48, mem_gb: 256 }
+        allowed_formats: [native, wasm]
+      - id: s3_visualization
+        type: viz
+        size_mb: 15000
+        resources: { cpu_cores: 24, mem_gb: 128, gpu_vram_gb: 8 }
+        allowed_formats: [cuda, native]
+      - id: s4_report_generation
+        type: postproc
+        size_mb: 8000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+
+  # Multi-modal AI Processing
+  - id: job-multimodal-ai
+    deadline_ms: 28000
+    stages:
+      - id: s1_text_processing
+        type: nlp
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48, gpu_vram_gb: 6 }
+        allowed_formats: [cuda, native]
+      - id: s2_image_processing
+        type: cv
+        size_mb: 6000
+        resources: { cpu_cores: 16, mem_gb: 64, gpu_vram_gb: 10 }
+        allowed_formats: [cuda, native]
+      - id: s3_audio_processing
+        type: preproc
+        size_mb: 3000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s4_fusion
+        type: mlp
+        size_mb: 5000
+        resources: { cpu_cores: 20, mem_gb: 80, gpu_vram_gb: 12 }
+        allowed_formats: [cuda, native]
+      - id: s5_output_generation
+        type: postproc
+        size_mb: 2000
+        resources: { cpu_cores: 6, mem_gb: 24 }
+        allowed_formats: [native, wasm]
+
+  # Blockchain/Consensus Simulation (CPU-intensive)
+  - id: job-consensus-simulation
+    deadline_ms: 40000
+    stages:
+      - id: s1_transaction_batch
+        type: io
+        size_mb: 5000
+        resources: { cpu_cores: 8, mem_gb: 32 }
+        allowed_formats: [native, wasm]
+      - id: s2_validation
+        type: analytics
+        size_mb: 8000
+        resources: { cpu_cores: 32, mem_gb: 128 }
+        allowed_formats: [native, wasm]
+      - id: s3_consensus_compute
+        type: analytics
+        size_mb: 10000
+        resources: { cpu_cores: 40, mem_gb: 160 }
+        allowed_formats: [native]
+      - id: s4_block_creation
+        type: postproc
+        size_mb: 4000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native, wasm]
+
+  # Genomics Pipeline (Very High Memory)
+  - id: job-genomics-pipeline
+    deadline_ms: 50000
+    stages:
+      - id: s1_sequence_loading
+        type: io
+        size_mb: 30000
+        resources: { cpu_cores: 12, mem_gb: 48 }
+        allowed_formats: [native]
+      - id: s2_alignment
+        type: analytics
+        size_mb: 35000
+        resources: { cpu_cores: 36, mem_gb: 256 }
+        allowed_formats: [native, wasm]
+      - id: s3_variant_calling
+        type: analytics
+        size_mb: 25000
+        resources: { cpu_cores: 28, mem_gb: 192 }
+        allowed_formats: [native]
+      - id: s4_annotation
+        type: analytics
+        size_mb: 15000
+        resources: { cpu_cores: 16, mem_gb: 96 }
+        allowed_formats: [native, wasm]
+

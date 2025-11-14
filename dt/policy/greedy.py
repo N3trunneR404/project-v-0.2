@@ -1,0 +1,419 @@
+# from __future__ import annotations  # Already at top
+
+from typing import Dict, List
+import math
+
+from dt.state import DTState, Job, JobStage, PlacementDecision, Node
+from dt.predict import PredictiveSimulator
+from dt.policy.base import Policy
+
+
+class GreedyLatencyPolicy(Policy):
+	def __init__(self, state: DTState, simulator: PredictiveSimulator) -> None:
+		super().__init__(state, simulator)
+
+	def _candidate_nodes(self, stage: JobStage) -> List[Node]:
+		nodes = []
+		for node in self.state.list_nodes():
+			if not node.available:
+				continue
+			if stage.compute.gpu_vram_gb > 0 and node.hardware.gpu_vram_gb < stage.compute.gpu_vram_gb:
+				continue
+			nodes.append(node)
+		return nodes
+
+	def place(self, job: Job) -> Dict[str, PlacementDecision]:
+		placements: Dict[str, PlacementDecision] = {}
+		prev_node_for: Dict[str, Node] = {}
+		for stage in job.stages:
+			best_node = None
+			best_score = math.inf
+			best_format = "native"
+			for node in self._candidate_nodes(stage):
+				exec_format = self.sim.choose_exec_format(stage, node)
+				lat = self.sim.compute_stage_latency_ms(stage, node, exec_format)
+				if stage.predecessor and stage.predecessor in prev_node_for:
+					lat += self.sim.compute_network_delay_ms(prev_node_for[stage.predecessor], node)
+				if lat < best_score:
+					best_score = lat
+					best_node = node
+					best_format = exec_format
+			if best_node is None:
+				continue
+			placements[stage.id] = PlacementDecision(stage_id=stage.id, node_name=best_node.name, exec_format=best_format)
+			prev_node_for[stage.id] = best_node
+		return placements
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+dt/policy/greedy.py — Baseline greedy planner for Fabric DT.
+
+What it does
+------------
+- Plans a single job (sequential stages) by scanning all feasible nodes per stage
+  and choosing the one with the lowest score.
+- Score combines compute_time + transfer_time (+ optional risk/energy weights).
+- Optional BanditPolicy: pick an execution format per (stage,node) before scoring.
+- Optional reservation step via DTState.reserve(), with 'dry_run' toggle.
+
+Key API
+-------
+planner = GreedyPlanner(state, cost_model, bandit=None, cfg=None)
+result  = planner.plan_job(job, dry_run=False)
+
+Result shape
+------------
+{
+  "job_id": str,
+  "assignments": {stage_id: node_name, ...},
+  "per_stage": [
+     {"id": stage_id, "node": node_name, "format": "native|cuda|wasm|...",
+      "compute_ms": float, "xfer_ms": float, "energy_kj": float, "risk": float,
+      "score": float, "reservation_id": "res-..." (if not dry_run), "infeasible": bool, "reason"?: str}
+  ],
+  "reservations": [{"node": "...", "reservation_id": "res-..."}],
+  "latency_ms": float,
+  "energy_kj": float,
+  "risk": float,
+  "infeasible": bool
+}
+
+Notes
+-----
+- This module is framework-agnostic; `dt/api.py` can import and use it directly.
+- No external dependencies.
+
+"""
+# from __future__ import annotations  # Already at top
+
+from dt.policy.rl_stub import RLPolicy
+RL = RLPolicy(persist_path="sim/rl_state.json")
+from typing import Any, Dict, List, Optional, Tuple
+
+try:
+    from dt.state import DTState, safe_float
+    try:
+        from dt.cost_models import CostModels as CostModel
+        def merge_stage_details(*args): return {}
+    except ImportError:
+        CostModel = object
+        def merge_stage_details(*args): return {}
+except Exception:  # pragma: no cover
+    DTState = object  # type: ignore
+    CostModel = object  # type: ignore
+    def safe_float(x: Any, d: float = 0.0) -> float:
+        try:
+            return float(x)
+        except Exception:
+            return d
+    def merge_stage_details(primary, cost):  # type: ignore
+        return (cost or []) or (primary or [])
+
+# Optional bandit
+try:
+    from dt.policy.bandit import BanditPolicy
+except Exception:  # pragma: no cover
+    BanditPolicy = None  # type: ignore
+
+
+DEFAULT_CFG = {
+    # scoring = compute_ms + xfer_ms + risk_weight*risk + energy_weight*energy_kj
+    "risk_weight": 10.0,          # converts 0..1 risk → "ms-like" penalty
+    "energy_weight": 0.0,         # set >0 to trade some latency for energy
+    "prefer_locality_bonus_ms": 0.0,  # subtract this if stage stays on prev node
+    "require_format_match": False,    # if True, node must support stage.allowed_formats
+    "reliability_weight": 1200.0,
+    "churn_penalty_ms": 250.0,
+    "stickiness_weight": 0.75,
+    "redundancy": 1,
+}
+
+
+def _supports_formats(node: Dict[str, Any], stage: Dict[str, Any]) -> bool:
+    allowed = set(stage.get("allowed_formats") or [])
+    disallowed = set(stage.get("disallowed_formats") or [])
+    fmts = set(node.get("formats_supported") or [])
+    if disallowed & fmts:
+        return False
+    if not allowed:
+        return True
+    return bool(fmts & allowed)
+
+
+def _fits(state: DTState, node: Dict[str, Any], stage: Dict[str, Any]) -> bool:
+    if (node.get("dyn") or {}).get("down", False):
+        return False
+    caps = state._effective_caps(node)
+    res = stage.get("resources") or {}
+    need_cpu  = safe_float(res.get("cpu_cores"), 0.0)
+    need_mem  = safe_float(res.get("mem_gb"), 0.0)
+    need_vram = safe_float(res.get("gpu_vram_gb"), 0.0)
+    if caps["free_cpu_cores"] + 1e-9 < need_cpu:  return False
+    if caps["free_mem_gb"]   + 1e-9 < need_mem:   return False
+    if caps["free_gpu_vram_gb"] + 1e-9 < need_vram: return False
+    return True
+
+
+class GreedyPlanner:
+    def __init__(
+        self,
+        state: DTState,
+        cost_model: CostModel,
+        bandit: Optional["BanditPolicy"] = None,
+        cfg: Optional[Dict[str, float]] = None,
+    ):
+        self.state = state
+        self.cm = cost_model
+        self.bandit = bandit
+        self.cfg = {**DEFAULT_CFG, **(cfg or {})}
+
+    # --------- core scoring ---------
+
+    def _choose_format(self, stage: Dict[str, Any], node: Dict[str, Any]) -> Optional[str]:
+        if self.bandit is None:
+            # If formats are specified and node supports them, keep as-is; else let CM handle penalties.
+            allowed = stage.get("allowed_formats")
+            if allowed:
+                fmts = set(node.get("formats_supported") or [])
+                # prefer intersection if exists; else just pick first allowed to constrain evaluation
+                inter = [f for f in allowed if f in fmts]
+                if inter:
+                    return inter[0]
+            return None  # no override
+        # Ask bandit for a single best format
+        return self.bandit.choose_format(stage, node)
+
+    def _score_candidate(
+        self,
+        stage: Dict[str, Any],
+        node_name: str,
+        prev_node: Optional[str],
+        prefer_locality_bonus_ms: float,
+        risk_weight: float,
+        energy_weight: float,
+        require_format_match: bool,
+        reliability_weight: float,
+        churn_penalty_ms: float,
+        stickiness_weight: float,
+        previous_assignment: Optional[str],
+    ) -> Tuple[float, Dict[str, Any]]:
+        node = self.state.nodes_by_name[node_name]
+
+        # (Optional) hard format feasibility
+        if require_format_match and not _supports_formats(node, stage):
+            return float("inf"), {"reason": "format_mismatch"}
+
+        # Pick evaluation format (bandit or heuristic)
+        fmt_override = self._choose_format(stage, node)
+        stage_eval = dict(stage)
+        if fmt_override is not None:
+            stage_eval["allowed_formats"] = [fmt_override]
+
+        # Times, energy, risk
+        comp_ms = self.cm.compute_time_ms(stage_eval, node)
+        xfer_ms = 0.0 if prev_node in (None, node_name) else self.cm.transfer_time_ms(
+            prev_node, node_name, safe_float(stage.get("size_mb"), 10.0)
+        )
+        energy  = self.cm.energy_kj(stage_eval, node, comp_ms)
+        risk    = self.cm.risk_score(stage_eval, node)
+
+        reliability = None
+        availability = None
+        try:
+            reliability = self.state.node_reliability(node_name)
+        except Exception:
+            pass
+        try:
+            availability = self.state.node_availability_window(node_name)
+        except Exception:
+            availability = None
+
+        if reliability is not None:
+            risk_penalty = reliability_weight * max(0.0, 1.0 - float(reliability))
+        else:
+            risk_penalty = 0.0
+        churn_penalty = 0.0
+        if availability is not None:
+            if availability < 120.0:
+                churn_penalty += churn_penalty_ms * (1.0 - max(0.0, availability) / 120.0)
+
+        # Greedy score
+        score = comp_ms + xfer_ms + risk_weight * risk + energy_weight * energy + risk_penalty + churn_penalty
+
+        # Locality preference (keep stages on same node if ties)
+        if prev_node and prev_node == node_name and prefer_locality_bonus_ms > 0:
+            score -= prefer_locality_bonus_ms
+        if previous_assignment and node_name == previous_assignment:
+            score -= stickiness_weight
+
+        metrics = {
+            "format": fmt_override,
+            "compute_ms": round(comp_ms, 3),
+            "xfer_ms": round(xfer_ms, 3),
+            "energy_kj": round(energy, 5),
+            "risk": round(risk, 4),
+            "reliability": None if reliability is None else round(float(reliability), 4),
+            "availability_window_sec": None if availability is None else round(float(availability), 3),
+            "score": round(score, 3),
+        }
+        return score, metrics
+
+    # --------- public: plan a job ---------
+
+    def plan_job(self, job: Dict[str, Any], dry_run: bool = False) -> Dict[str, Any]:
+        stages: List[Dict[str, Any]] = job.get("stages") or []
+        if not stages:
+            return {
+                "job_id": job.get("id"),
+                "assignments": {},
+                "per_stage": [],
+                "reservations": [],
+                "latency_ms": 0.0,
+                "energy_kj": 0.0,
+                "risk": 0.0,
+                "infeasible": True,
+                "reason": "no_stages",
+            }
+
+        risk_w   = float(self.cfg["risk_weight"])
+        energy_w = float(self.cfg["energy_weight"])
+        loc_bonus = float(self.cfg["prefer_locality_bonus_ms"])
+        require_fmt = bool(self.cfg["require_format_match"])
+        reliability_weight = float(self.cfg.get("reliability_weight", 0.0))
+        churn_penalty_ms = float(self.cfg.get("churn_penalty_ms", 0.0))
+        stickiness_weight = float(self.cfg.get("stickiness_weight", 0.0))
+        redundancy = max(1, int(job.get("redundancy") or self.cfg.get("redundancy", 1)))
+
+        assignments: Dict[str, str] = {}
+        per_stage: List[Dict[str, Any]] = []
+        reservations: List[Dict[str, str]] = []
+        fallback_summary: Dict[str, List[Dict[str, Any]]] = {}
+        prev_assignments = job.get("previous_assignments") or {}
+
+        prev_node: Optional[str] = None
+        infeasible = False
+
+        for st in stages:
+            sid = st.get("id")
+            if not sid:
+                per_stage.append({"infeasible": True, "reason": "missing_stage_id"})
+                infeasible = True
+                prev_node = None
+                continue
+
+            nodes_view = self.state.nodes_for_planner()
+            best_name = None
+            best_score = float("inf")
+            best_metrics: Dict[str, Any] = {}
+
+            candidates: List[Tuple[float, str, Dict[str, Any]]] = []
+
+            # Scan candidates
+            for name, node in nodes_view.items():
+                if not _fits(self.state, node, st):
+                    continue
+                sc, met = self._score_candidate(
+                    st, name, prev_node,
+                    prefer_locality_bonus_ms=loc_bonus,
+                    risk_weight=risk_w,
+                    energy_weight=energy_w,
+                    require_format_match=require_fmt,
+                    reliability_weight=reliability_weight,
+                    churn_penalty_ms=churn_penalty_ms,
+                    stickiness_weight=stickiness_weight,
+                    previous_assignment=prev_assignments.get(sid),
+                )
+                if sc == float("inf"):
+                    continue
+                candidates.append((sc, name, met))
+
+            candidates.sort(key=lambda x: x[0])
+            if candidates:
+                best_score, best_name, best_metrics = candidates[0]
+            else:
+                best_score = float("inf")
+                best_name = None
+                best_metrics = {}
+
+            if best_name is None or best_score == float("inf"):
+                per_stage.append({"id": sid, "node": None, "infeasible": True, "reason": "no_feasible_node"})
+                infeasible = True
+                prev_node = None
+                continue
+
+            if redundancy > 1 and len(candidates) > 1:
+                fallbacks = [
+                    {
+                        "node": cand_name,
+                        "score": round(score, 3),
+                        "reliability": cand_metrics.get("reliability"),
+                        "availability_window_sec": cand_metrics.get("availability_window_sec"),
+                    }
+                    for score, cand_name, cand_metrics in candidates[1:redundancy]
+                ]
+                if fallbacks:
+                    fallback_summary[sid] = fallbacks
+                    best_metrics = dict(best_metrics)
+                    best_metrics["fallbacks"] = fallbacks
+
+            # Try reservation unless dry_run
+            res_id = None
+            if not dry_run:
+                res = st.get("resources") or {}
+                req = {
+                    "node": best_name,
+                    "cpu_cores": safe_float(res.get("cpu_cores"), 0.0),
+                    "mem_gb": safe_float(res.get("mem_gb"), 0.0),
+                    "gpu_vram_gb": safe_float(res.get("gpu_vram_gb"), 0.0),
+                }
+                res_id = self.state.reserve(req)
+                if res_id is None:
+                    per_stage.append({"id": sid, "node": best_name, "infeasible": True, "reason": "reservation_failed"})
+                    infeasible = True
+                    prev_node = None
+                    continue
+                reservations.append({"node": best_name, "reservation_id": res_id})
+
+            rec = {"id": sid, "node": best_name, "reservation_id": res_id, **best_metrics}
+            per_stage.append(rec)
+            assignments[sid] = best_name
+            prev_node = best_name
+
+            if self.bandit and best_metrics.get("format"):
+                try:
+                    node_obj = self.state.nodes_by_name.get(best_name) or {}
+                    self.bandit.record_outcome(
+                        st,
+                        node_obj,
+                        best_metrics.get("format"),
+                        best_metrics.get("compute_ms"),
+                        energy_kj=best_metrics.get("energy_kj"),
+                        risk=best_metrics.get("risk"),
+                    )
+                except Exception:
+                    # Bandit learning is opportunistic; ignore telemetry failures.
+                    pass
+
+        # End-to-end cost using CM (adds up compute+xfer & aggregates)
+        job_cost = self.cm.job_cost(job, assignments)
+        merged_per_stage = merge_stage_details(per_stage, job_cost.get("per_stage") or [])
+        out = {
+            "job_id": job.get("id"),
+            "assignments": assignments,
+            "per_stage": merged_per_stage,
+            "reservations": reservations,
+            "latency_ms": job_cost.get("latency_ms", float("inf")),
+            "energy_kj": job_cost.get("energy_kj", 0.0),
+            "risk": job_cost.get("risk", 1.0),
+            "infeasible": infeasible or (job_cost.get("latency_ms") == float("inf")),
+            "fallbacks": fallback_summary,
+            "avg_reliability": job_cost.get("avg_reliability"),
+        }
+        if self.bandit and not dry_run:
+            try:
+                self.bandit.save()
+            except Exception:
+                pass
+        return out
+

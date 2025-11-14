@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dt-api
+  namespace: dt-fabric
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dt-api
+  template:
+    metadata:
+      labels:
+        app: dt-api
+    spec:
+      containers:
+        - name: api
+          image: dt/dt-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FLASK_ENV
+              value: "production"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dt-api
+  namespace: dt-fabric
+spec:
+  type: ClusterIP
+  selector:
+    app: dt-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+
+
+
+

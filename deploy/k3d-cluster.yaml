@@ -1,0 +1,22 @@
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: fabric-dt
+servers: 1
+agents: 2
+options:
+  k3s:
+    extraArgs:
+      - arg: "--kube-apiserver-arg=enable-admission-plugins=MutatingAdmissionWebhook,ValidatingAdmissionWebhook"
+        nodeFilters:
+          - server:*
+registries:
+  create:
+    name: fabric-reg
+    host: "0.0.0.0"
+    hostPort: "5001"
+
+
+
+
+

@@ -1,0 +1,16 @@
+Flask>=3.0.0
+gunicorn>=21.2.0
+kubernetes>=28.1.0
+prometheus-api-client>=0.5.4
+numpy>=1.26.0
+pandas>=2.2.0
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+PyYAML>=6.0.1
+requests>=2.31.0
+tenacity>=8.2.0
+
+# Developer tools
+black>=24.8.0
+ruff>=0.6.0
+pytest>=8.3.0

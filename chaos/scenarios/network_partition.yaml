@@ -1,0 +1,27 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: edge-partition
+  namespace: chaos-mesh
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - dt-fabric
+    labelSelectors:
+      dt.zone: zone-a
+  direction: to
+  target:
+    selector:
+      namespaces:
+        - dt-fabric
+      labelSelectors:
+        dt.zone: zone-b
+    mode: all
+  duration: "60s"
+
+
+
+
+
