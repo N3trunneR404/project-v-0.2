@@ -1,354 +1,454 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field, asdict
+from typing import Dict, List, Optional, Tuple, Any
 import time
 import threading
+import ipaddress
+from collections import defaultdict
 
 
 @dataclass
 class HardwareSpec:
-	cpu_cores: int
-	base_ghz: float
-	memory_gb: int
-	gpu_vram_gb: int = 0
-	arch: str = "amd64"  # amd64 | arm64 | riscv64
-	uarch: Optional[str] = None
-	tdp_w: Optional[float] = None
+        cpu_cores: int
+        base_ghz: float
+        memory_gb: int
+        gpu_vram_gb: int = 0
+        arch: str = "amd64"  # amd64 | arm64 | riscv64
+        uarch: Optional[str] = None
+        tdp_w: Optional[float] = None
+        memory_mhz: Optional[int] = None
+        memory_type: Optional[str] = None
+        accelerators: List[str] = field(default_factory=list)
 
 
 @dataclass
 class NodeRuntime:
-	native_formats: List[str] = field(default_factory=lambda: ["native"])
-	emulation_support: List[str] = field(default_factory=list)  # e.g., ["arm64","riscv64"]
-	wasm_support: bool = False
+        native_formats: List[str] = field(default_factory=lambda: ["native"])
+        emulation_support: List[str] = field(default_factory=list)  # e.g., ["arm64","riscv64"]
+        wasm_support: bool = False
 
 
 @dataclass
 class KubernetesInfo:
-	node_name: str
-	labels: Dict[str, str] = field(default_factory=dict)
-	allocatable_cpu: float = 0.0
-	allocatable_mem_gb: float = 0.0
-	zone: Optional[str] = None
+        node_name: str
+        labels: Dict[str, str] = field(default_factory=dict)
+        allocatable_cpu: float = 0.0
+        allocatable_mem_gb: float = 0.0
+        zone: Optional[str] = None
 
 
 @dataclass
 class Telemetry:
-	cpu_util: float = 0.0
-	mem_util: float = 0.0
-	net_rx_mbps: float = 0.0
-	net_tx_mbps: float = 0.0
-	cpu_temp_c: Optional[float] = None
-	last_heartbeat_s: float = field(default_factory=time.time)
+        cpu_util: float = 0.0
+        mem_util: float = 0.0
+        net_rx_mbps: float = 0.0
+        net_tx_mbps: float = 0.0
+        cpu_temp_c: Optional[float] = None
+        last_heartbeat_s: float = field(default_factory=time.time)
 
 
 @dataclass
 class Node:
-	name: str
-	hardware: HardwareSpec
-	runtime: NodeRuntime
-	k8s: KubernetesInfo
-	tel: Telemetry = field(default_factory=Telemetry)
-	available: bool = True
+        name: str
+        hardware: HardwareSpec
+        runtime: NodeRuntime
+        k8s: KubernetesInfo
+        tel: Telemetry = field(default_factory=Telemetry)
+        available: bool = True
+        network: Optional["NetworkIdentity"] = None
+        pool_key: Optional[str] = None
+        pool_score: float = 0.0
 
 
 @dataclass
 class Link:
-	a: str
-	b: str
-	base_latency_ms: float
-	bandwidth_gbps: float
-	loss_pct: float = 0.0
+        a: str
+        b: str
+        base_latency_ms: float
+        bandwidth_gbps: float
+        loss_pct: float = 0.0
 
 
 @dataclass
 class StageCompute:
-	cpu: int
-	mem_gb: int
-	duration_ms: int
-	gpu_vram_gb: int = 0
-	workload_type: str = "cpu_bound"  # cpu_bound | io_bound | gpu_bound
+        cpu: int
+        mem_gb: int
+        duration_ms: int
+        gpu_vram_gb: int = 0
+        workload_type: str = "cpu_bound"  # cpu_bound | io_bound | gpu_bound
 
 
 @dataclass
 class StageConstraints:
-	arch: List[str] = field(default_factory=lambda: ["amd64"])
-	formats: List[str] = field(default_factory=lambda: ["native"])
-	data_locality: Optional[str] = None
-	max_latency_to_predecessor_ms: Optional[int] = None
+        arch: List[str] = field(default_factory=lambda: ["amd64"])
+        formats: List[str] = field(default_factory=lambda: ["native"])
+        data_locality: Optional[str] = None
+        max_latency_to_predecessor_ms: Optional[int] = None
 
 
 @dataclass
 class JobStage:
-	id: str
-	compute: StageCompute
-	constraints: StageConstraints
-	predecessor: Optional[str] = None
+        id: str
+        compute: StageCompute
+        constraints: StageConstraints
+        predecessor: Optional[str] = None
 
 
 @dataclass
 class JobOrigin:
-	"""Origin context for a job request."""
-	cluster: str
-	node: Optional[str] = None
+        """Origin context for a job request."""
+        cluster: str
+        node: Optional[str] = None
 
 
 @dataclass
 class Job:
-	name: str
-	deadline_ms: int
-	stages: List[JobStage]
-	origin: Optional[JobOrigin] = None
+        name: str
+        deadline_ms: int
+        stages: List[JobStage]
+        origin: Optional[JobOrigin] = None
 
 
 @dataclass
 class PlacementDecision:
-	stage_id: str
-	node_name: str
-	exec_format: str  # native | qemu-<arch> | wasm | cuda
+        stage_id: str
+        node_name: str
+        exec_format: str  # native | qemu-<arch> | wasm | cuda
 
 
 @dataclass
 class ObservedMetrics:
-	"""Observed metrics for a plan execution."""
-	latency_ms: float
-	cpu_util: float = 0.0
-	mem_peak_gb: float = 0.0
-	energy_kwh: float = 0.0
-	completed_at: Optional[float] = None  # timestamp
+        """Observed metrics for a plan execution."""
+        latency_ms: float
+        cpu_util: float = 0.0
+        mem_peak_gb: float = 0.0
+        energy_kwh: float = 0.0
+        completed_at: Optional[float] = None  # timestamp
 
 
 @dataclass
 class ClusterInfo:
-	"""Information about a cluster."""
-	name: str
-	cluster_type: str  # datacenter, mining, lab, gaming, pan, edge
-	resiliency_score: float = 0.8
-	nodes: List[str] = field(default_factory=list)
+        """Information about a cluster."""
+        name: str
+        cluster_type: str  # datacenter, mining, lab, gaming, pan, edge
+        resiliency_score: float = 0.8
+        nodes: List[str] = field(default_factory=list)
+        cluster_id: Optional[int] = None
+        network_cidr: Optional[str] = None
+        pod_cidr: Optional[str] = None
+        service_cidr: Optional[str] = None
+        node_pools: Dict[str, List[str]] = field(default_factory=dict)
 
 
 @dataclass
 class Plan:
-	plan_id: str
-	job_name: str
-	placements: Dict[str, PlacementDecision]
-	predicted_latency_ms: float
-	predicted_energy_kwh: float
-	risk_score: float
-	shadow_plan: Dict[str, str] = field(default_factory=dict)  # stage_backup -> node
+        plan_id: str
+        job_name: str
+        placements: Dict[str, PlacementDecision]
+        predicted_latency_ms: float
+        predicted_energy_kwh: float
+        risk_score: float
+        shadow_plan: Dict[str, str] = field(default_factory=dict)  # stage_backup -> node
 
 
-class DTState:
-	def __init__(self) -> None:
-		self._nodes: Dict[str, Node] = {}
-		self._links: Dict[Tuple[str, str], Link] = {}
-		self._jobs: Dict[str, Job] = {}
-		self.clusters: Dict[str, ClusterInfo] = {}
-		self.observed_metrics: Dict[str, ObservedMetrics] = {}  # plan_id -> ObservedMetrics
-		self._lock = threading.RLock()
+@dataclass
+class NetworkIdentity:
+        """Virtual network coordinates for a node."""
 
-	def upsert_node(self, node: Node) -> None:
-		with self._lock:
-			self._nodes[node.name] = node
+        cluster_id: int
+        cluster_name: str
+        node_id: int
+        network_cidr: str
+        pod_cidr: str
+        service_cidr: str
+        node_ip: str
+        pod_ip: str
+        mac_address: str
 
-	def mark_node_availability(self, node_name: str, available: bool) -> None:
-		"""Mark a node as available or unavailable."""
-		with self._lock:
-			# Check if using full implementation (nodes_by_name)
-			if hasattr(self, 'nodes_by_name') and node_name in self.nodes_by_name:
-				node_dict = self.nodes_by_name[node_name]
-				# Update availability in the dict structure
-				if "dyn" not in node_dict:
-					node_dict["dyn"] = {}
-				node_dict["dyn"]["available"] = available
-				# Also update in the effective state
-				if "effective" not in node_dict:
-					node_dict["effective"] = {}
-				node_dict["effective"]["available"] = available
-			# Fall back to simple _nodes dict
-			elif hasattr(self, '_nodes') and node_name in self._nodes:
-				self._nodes[node_name].available = available
-			else:
-				# Node not found - this is not necessarily an error
-				# (node might not exist yet, or might be in a different format)
-				pass
 
-	def upsert_link(self, link: Link) -> None:
-		with self._lock:
-			key = tuple(sorted([link.a, link.b]))
-			self._links[key] = link
+@dataclass
+class NodePool:
+        """Capability-aware grouping of nodes inside a cluster."""
 
-	def update_node_telemetry(self, node_name: str, metrics: Dict[str, float]) -> None:
-		"""Update telemetry for a node."""
-		with self._lock:
-			node = self.get_node(node_name)
-			if node:
-				if 'cpu_util' in metrics:
-					node.tel.cpu_util = float(metrics['cpu_util'])
-				if 'mem_util' in metrics:
-					node.tel.mem_util = float(metrics['mem_util'])
-				if 'net_rx_mbps' in metrics:
-					node.tel.net_rx_mbps = float(metrics['net_rx_mbps'])
-				if 'net_tx_mbps' in metrics:
-					node.tel.net_tx_mbps = float(metrics['net_tx_mbps'])
-				if 'cpu_temp_c' in metrics:
-					node.tel.cpu_temp_c = float(metrics['cpu_temp_c'])
-				node.tel.last_heartbeat_s = time.time()
+        cluster_id: int
+        cluster_name: str
+        pool_key: str
+        characteristics: Dict[str, Any]
+        nodes: List[str] = field(default_factory=list)
+        score: float = 0.0
 
-	def record_pod_event(self, pod_event: Dict[str, any]) -> None:
-		"""Record a pod lifecycle event."""
-		with self._lock:
-			# Extract plan_id from pod labels
-			plan_id = pod_event.get('labels', {}).get('dt.plan_id')
-			if not plan_id:
-				return
-			
-			event_type = pod_event.get('type')  # Pending, Running, Succeeded, Failed
-			pod_name = pod_event.get('name', '')
-			
-			# If pod completed, we may want to collect final metrics
-			# This will be handled by the telemetry collector
-			if event_type in ('Succeeded', 'Failed'):
-				# Mark that we should collect final metrics for this plan
-				# The actual metrics collection happens in telemetry collector
-				pass
 
-	def record_observed_metrics(self, plan_id: str, metrics: ObservedMetrics) -> None:
-		"""Record observed metrics for a plan execution."""
-		with self._lock:
-			self.observed_metrics[plan_id] = metrics
+class VirtualTopology:
+        """Allocator for virtual cluster/node identifiers and pools."""
 
-	def get_observed_metrics(self, plan_id: str) -> Optional[ObservedMetrics]:
-		"""Get observed metrics for a plan."""
-		with self._lock:
-			return self.observed_metrics.get(plan_id)
+        def __init__(self) -> None:
+                self._cluster_id_seq: int = 1
+                self._cluster_ids: Dict[str, int] = {}
+                self._cluster_networks: Dict[str, Dict[str, str]] = {}
+                self._node_counters: Dict[int, int] = defaultdict(int)
+                self._identities: Dict[str, NetworkIdentity] = {}
+                self._pools: Dict[Tuple[int, str], NodePool] = {}
 
-	def get_cluster(self, node_name: str) -> Optional[str]:
-		"""Get cluster name for a node."""
-		with self._lock:
-			# Check if node has cluster info in k8s labels
-			node = self.get_node(node_name)
-			if node and node.k8s:
-				cluster_name = node.k8s.labels.get('dt.cluster.name')
-				if cluster_name:
-					return cluster_name
-			
-			# Try to infer from cluster node lists
-			for cluster_name, cluster_info in self.clusters.items():
-				if node_name in cluster_info.nodes:
-					return cluster_name
-			
-			# Try to infer from node name pattern
-			for cluster_name in self.clusters.keys():
-				if node_name.startswith(cluster_name):
-					return cluster_name
-			
-			return None
+        # ------------------------------------------------------------------
+        # Cluster registration & addressing helpers
+        # ------------------------------------------------------------------
+        def register_cluster(self, cluster: ClusterInfo) -> int:
+                """Ensure a cluster has a stable 8-bit identifier and subnets."""
 
-	def register_cluster(self, cluster_info: ClusterInfo) -> None:
-		"""Register a cluster in the state."""
-		with self._lock:
-			self.clusters[cluster_info.name] = cluster_info
+                if cluster.name in self._cluster_ids:
+                        cluster_id = self._cluster_ids[cluster.name]
+                else:
+                        if self._cluster_id_seq > 255:
+                                raise ValueError("exhausted virtual cluster id space (8-bit)")
+                        cluster_id = self._cluster_id_seq
+                        self._cluster_id_seq += 1
+                        self._cluster_ids[cluster.name] = cluster_id
 
-	def list_nodes(self) -> List[Node]:
-		"""Return list of Node objects from the state."""
-		with self._lock:
-			# Check if this is the full implementation (has nodes_by_name)
-			if hasattr(self, 'nodes_by_name') and self.nodes_by_name:
-				nodes = []
-				for name, node_dict in self.nodes_by_name.items():
-					try:
-						hw = HardwareSpec(
-							cpu_cores=node_dict["hardware"]["cpu_cores"],
-							base_ghz=node_dict["hardware"]["base_ghz"],
-							memory_gb=node_dict["hardware"]["memory_gb"],
-							gpu_vram_gb=node_dict["hardware"].get("gpu_vram_gb", 0),
-							arch=node_dict["hardware"].get("arch", "amd64"),
-							tdp_w=node_dict["hardware"].get("tdp_w"),
-						)
-						rt = NodeRuntime(
-							native_formats=node_dict["runtime"].get("native_formats", ["native"]),
-							emulation_support=node_dict["runtime"].get("emulation_support", []),
-							wasm_support=node_dict["runtime"].get("wasm_support", False),
-						)
-						k8s_info = None
-						if "k8s" in node_dict and node_dict["k8s"]:
-							k8s_info = KubernetesInfo(
-								node_name=node_dict["k8s"].get("node_name", name),
-								labels=node_dict["k8s"].get("labels", {}),
-								allocatable_cpu=node_dict["k8s"].get("allocatable_cpu", 0.0),
-								allocatable_mem_gb=node_dict["k8s"].get("allocatable_mem_gb", 0.0),
-								zone=node_dict["k8s"].get("zone"),
-							)
-						nodes.append(Node(name=name, hardware=hw, runtime=rt, k8s=k8s_info))
-					except Exception:
-						continue
-				return nodes
-			# Fall back to simple _nodes dict if it exists
-			if hasattr(self, '_nodes'):
-				return list(self._nodes.values())
-			return []
+                network = self._cluster_networks.get(cluster.name)
+                if not network:
+                        network = self._build_network_profile(cluster, cluster_id)
+                        self._cluster_networks[cluster.name] = network
 
-	def get_node(self, node_name: str) -> Optional[Node]:
-		with self._lock:
-			# Check if this is the full implementation (has nodes_by_name)
-			if hasattr(self, 'nodes_by_name') and node_name in self.nodes_by_name:
-				node_dict = self.nodes_by_name[node_name]
-				try:
-					hw = HardwareSpec(
-						cpu_cores=node_dict["hardware"]["cpu_cores"],
-						base_ghz=node_dict["hardware"]["base_ghz"],
-						memory_gb=node_dict["hardware"]["memory_gb"],
-						gpu_vram_gb=node_dict["hardware"].get("gpu_vram_gb", 0),
-						arch=node_dict["hardware"].get("arch", "amd64"),
-						tdp_w=node_dict["hardware"].get("tdp_w"),
-					)
-					rt = NodeRuntime(
-						native_formats=node_dict["runtime"].get("native_formats", ["native"]),
-						emulation_support=node_dict["runtime"].get("emulation_support", []),
-						wasm_support=node_dict["runtime"].get("wasm_support", False),
-					)
-					k8s_info = None
-					if "k8s" in node_dict and node_dict["k8s"]:
-						k8s_info = KubernetesInfo(
-							node_name=node_dict["k8s"].get("node_name", node_name),
-							labels=node_dict["k8s"].get("labels", {}),
-							allocatable_cpu=node_dict["k8s"].get("allocatable_cpu", 0.0),
-							allocatable_mem_gb=node_dict["k8s"].get("allocatable_mem_gb", 0.0),
-							zone=node_dict["k8s"].get("zone"),
-						)
-					return Node(name=node_name, hardware=hw, runtime=rt, k8s=k8s_info)
-				except Exception:
-					return None
-			# Fall back to simple _nodes dict if it exists
-			if hasattr(self, '_nodes'):
-				return self._nodes.get(node_name)
-			return None
+                cluster.cluster_id = cluster_id
+                cluster.network_cidr = cluster.network_cidr or network["network_cidr"]
+                cluster.pod_cidr = cluster.pod_cidr or network["pod_cidr"]
+                cluster.service_cidr = cluster.service_cidr or network["service_cidr"]
+                cluster.node_pools = cluster.node_pools or {}
 
-	def add_job(self, job: Job) -> None:
-		with self._lock:
-			self._jobs[job.name] = job
+                return cluster_id
 
-	def get_job(self, job_name: str) -> Optional[Job]:
-		with self._lock:
-			return self._jobs.get(job_name)
+        def ensure_node(self, cluster_name: str, node: Node) -> Tuple[Optional[NetworkIdentity], Optional[NodePool]]:
+                """Allocate a virtual node identity and pool membership."""
 
-	def links_incident_to(self, node_name: str) -> List[Link]:
-		with self._lock:
-			results: List[Link] = []
-			for (a, b), link in self._links.items():
-				if a == node_name or b == node_name:
-					results.append(link)
-			return results
+                cluster_id = self._cluster_ids.get(cluster_name)
+                network = self._cluster_networks.get(cluster_name)
+                if cluster_id is None or not network:
+                        return None, None
 
-	def zones(self) -> Dict[str, List[Node]]:
-		with self._lock:
-			out: Dict[str, List[Node]] = {}
-			for n in self._nodes.values():
-				zone = n.k8s.zone or "unknown"
-				out.setdefault(zone, []).append(n)
-			return out
+                # Reuse existing assignment when possible
+                existing = self._identities.get(node.name)
+                if existing and existing.cluster_id == cluster_id:
+                        pool = None
+                        for (cid, key), candidate in self._pools.items():
+                                if cid == cluster_id and node.name in candidate.nodes:
+                                        pool = candidate
+                                        node.pool_key = key
+                                        node.pool_score = candidate.score
+                                        break
+                        return existing, pool
+
+                node_id = self._allocate_node_id(cluster_id, node)
+                pod_ip = self._allocate_ip(network["pod_cidr"], node_id)
+                node_ip = self._allocate_ip(network["network_cidr"], node_id)
+                mac = self._derive_mac(cluster_id, node_id)
+
+                identity = NetworkIdentity(
+                        cluster_id=cluster_id,
+                        cluster_name=cluster_name,
+                        node_id=node_id,
+                        network_cidr=network["network_cidr"],
+                        pod_cidr=network["pod_cidr"],
+                        service_cidr=network["service_cidr"],
+                        node_ip=node_ip,
+                        pod_ip=pod_ip,
+                        mac_address=mac,
+                )
+                self._identities[node.name] = identity
+
+                pool_key, characteristics, score = self._classify_node(node)
+                pool = self._pools.get((cluster_id, pool_key))
+                if not pool:
+                        pool = NodePool(
+                                cluster_id=cluster_id,
+                                cluster_name=cluster_name,
+                                pool_key=pool_key,
+                                characteristics=characteristics,
+                                nodes=[],
+                                score=score,
+                        )
+                        self._pools[(cluster_id, pool_key)] = pool
+
+                if node.name not in pool.nodes:
+                        pool.nodes.append(node.name)
+                # Keep aggregate score meaningful (max captures pool capability envelope)
+                pool.score = max(pool.score, score)
+                pool.characteristics.update(characteristics)
+
+                node.pool_key = pool_key
+                node.pool_score = score
+
+                return identity, pool
+
+        def get_identity(self, node_name: str) -> Optional[NetworkIdentity]:
+                return self._identities.get(node_name)
+
+        def list_pools(self) -> List[NodePool]:
+                return [NodePool(
+                        cluster_id=p.cluster_id,
+                        cluster_name=p.cluster_name,
+                        pool_key=p.pool_key,
+                        characteristics=dict(p.characteristics),
+                        nodes=list(p.nodes),
+                        score=p.score,
+                ) for p in self._pools.values()]
+
+        def describe(self) -> Dict[str, Any]:
+                clusters: Dict[str, Any] = {}
+                for name, cid in self._cluster_ids.items():
+                        network = self._cluster_networks.get(name, {})
+                        clusters[name] = {
+                                "cluster_id": cid,
+                                "network_cidr": network.get("network_cidr"),
+                                "pod_cidr": network.get("pod_cidr"),
+                                "service_cidr": network.get("service_cidr"),
+                                "nodes": [],
+                                "pools": {},
+                        }
+
+                for node_name, identity in self._identities.items():
+                        cluster = clusters.setdefault(identity.cluster_name, {
+                                "cluster_id": identity.cluster_id,
+                                "network_cidr": identity.network_cidr,
+                                "pod_cidr": identity.pod_cidr,
+                                "service_cidr": identity.service_cidr,
+                                "nodes": [],
+                                "pools": {},
+                        })
+                        cluster["nodes"].append({
+                                "name": node_name,
+                                "node_id": identity.node_id,
+                                "pod_ip": identity.pod_ip,
+                                "node_ip": identity.node_ip,
+                                "mac_address": identity.mac_address,
+                        })
+
+                for pool in self._pools.values():
+                        cluster = clusters.setdefault(pool.cluster_name, {
+                                "cluster_id": pool.cluster_id,
+                                "network_cidr": None,
+                                "pod_cidr": None,
+                                "service_cidr": None,
+                                "nodes": [],
+                                "pools": {},
+                        })
+                        cluster["pools"][pool.pool_key] = {
+                                "score": pool.score,
+                                "characteristics": dict(pool.characteristics),
+                                "nodes": list(pool.nodes),
+                        }
+
+                return clusters
+
+        # ------------------------------------------------------------------
+        # Internal helpers
+        # ------------------------------------------------------------------
+        def _build_network_profile(self, cluster: ClusterInfo, cluster_id: int) -> Dict[str, str]:
+                pod_cidr = cluster.pod_cidr or f"10.{cluster_id}.0.0/16"
+                service_cidr = cluster.service_cidr or f"10.{cluster_id}.128.0/17"
+                network_cidr = cluster.network_cidr or f"172.30.{cluster_id}.0/24"
+                return {
+                        "pod_cidr": pod_cidr,
+                        "service_cidr": service_cidr,
+                        "network_cidr": network_cidr,
+                }
+
+        def _allocate_node_id(self, cluster_id: int, node: Node) -> int:
+                label = None
+                if node.k8s and node.k8s.labels:
+                        label = node.k8s.labels.get("dt.virtual.node_id")
+                if label:
+                        try:
+                                node_id = int(label)
+                                self._node_counters[cluster_id] = max(self._node_counters[cluster_id], node_id)
+                                return node_id
+                        except ValueError:
+                                pass
+
+                self._node_counters[cluster_id] += 1
+                node_id = self._node_counters[cluster_id]
+                if node_id > 0xFFFF:
+                        raise ValueError("exhausted virtual node id space (16-bit)")
+                return node_id
+
+        def _allocate_ip(self, cidr: str, node_id: int) -> str:
+                network = ipaddress.ip_network(cidr, strict=False)
+                host_index = max(10, node_id + 10)  # Reserve early addresses for infra
+                if host_index >= network.num_addresses - 1:
+                        host_index = (node_id % (network.num_addresses - 2)) + 1
+                ip_addr = network.network_address + host_index
+                if ip_addr == network.broadcast_address:
+                        ip_addr -= 1
+                return str(ip_addr)
+
+        def _derive_mac(self, cluster_id: int, node_id: int) -> str:
+                return "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}".format(
+                        0x02,
+                        0xFD,
+                        cluster_id & 0xFF,
+                        (node_id >> 8) & 0xFF,
+                        node_id & 0xFF,
+                        (node_id * 37) & 0xFF,
+                )
+
+        def _classify_node(self, node: Node) -> Tuple[str, Dict[str, Any], float]:
+                hw = node.hardware
+                cores = hw.cpu_cores or 0
+                base_ghz = hw.base_ghz or 0.0
+                tdp = hw.tdp_w or (cores * base_ghz * 12)
+                core_score = cores * max(base_ghz, 1.0)
+
+                if cores >= 48 or tdp >= 220:
+                        core_tier = "compute-ultra"
+                elif cores >= 24 or tdp >= 140:
+                        core_tier = "compute-high"
+                elif cores >= 12 or tdp >= 95:
+                        core_tier = "compute-balanced"
+                else:
+                        core_tier = "compute-edge"
+
+                mem_speed = hw.memory_mhz or 2666
+                mem_total = hw.memory_gb or 0
+                if mem_speed >= 5600 or (hw.memory_type or "").lower().startswith("ddr5"):
+                        mem_tier = "mem-ddr5-elite"
+                elif mem_speed >= 4266:
+                        mem_tier = "mem-ddr4-ultra"
+                elif mem_speed >= 3600:
+                        mem_tier = "mem-ddr4-fast"
+                elif mem_speed >= 2666:
+                        mem_tier = "mem-mainstream"
+                else:
+                        mem_tier = "mem-legacy"
+
+                if hw.accelerators:
+                        kinds = sorted({acc.lower() for acc in hw.accelerators})
+                        accel_tier = "accel-" + "-".join(kinds)
+                elif hw.gpu_vram_gb:
+                        accel_tier = "accel-gpu"
+                else:
+                        accel_tier = "accel-none"
+
+                pool_key = f"{core_tier}|{mem_tier}|{accel_tier}"
+                characteristics = {
+                        "core_tier": core_tier,
+                        "mem_tier": mem_tier,
+                        "accelerator_tier": accel_tier,
+                        "cpu_cores": cores,
+                        "base_ghz": base_ghz,
+                        "tdp_w": tdp,
+                        "memory_gb": mem_total,
+                        "memory_mhz": mem_speed,
+                        "accelerators": list(hw.accelerators),
+                        "gpu_vram_gb": hw.gpu_vram_gb,
+                }
+
+                score = (core_score * 1.5) + (mem_total * 0.75) + (mem_speed / 100.0)
+                if accel_tier != "accel-none":
+                        score += 150.0
+
+                return pool_key, characteristics, score
+
+
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -386,9 +486,6 @@ overrides_path   default: "sim/overrides.json" (optional)
 import copy
 import json
 import os
-import threading
-import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -480,6 +577,12 @@ class DTState:
         self.overrides_path = Path(overrides_path)
 
         self._lock = threading.RLock()
+        # Lightweight compatibility attributes expected by the simplified
+        # planner/API integration.
+        self.clusters: Dict[str, ClusterInfo] = {}
+        self.observed_metrics: Dict[str, ObservedMetrics] = {}
+        self._jobs: Dict[str, Job] = {}
+        self._virtual = VirtualTopology()
         event_buf = max(32, safe_int(os.environ.get("FABRIC_DT_EVENT_BUFFER", 512), 512))
         # self._events = EventBus(maxlen=event_buf)  # EventBus not implemented yet
         # Simple stub for events
@@ -519,6 +622,7 @@ class DTState:
         self._load_nodes_locked()
         self._load_topology_locked()
         self._load_overrides_locked(apply_now=True)
+        self._refresh_virtual_topology_from_nodes_locked()
 
         # Background watcher for overrides (and optionally hot-reload topology)
         self._watch_interval = max(0.2, float(watch_interval_sec))
@@ -940,32 +1044,131 @@ class DTState:
             node_dict = self.nodes_by_name.get(name)
             if not node_dict:
                 return None
-            try:
-                hw = HardwareSpec(
-                    cpu_cores=node_dict["hardware"]["cpu_cores"],
-                    base_ghz=node_dict["hardware"]["base_ghz"],
-                    memory_gb=node_dict["hardware"]["memory_gb"],
-                    gpu_vram_gb=node_dict["hardware"].get("gpu_vram_gb", 0),
-                    arch=node_dict["hardware"].get("arch", "amd64"),
-                    tdp_w=node_dict["hardware"].get("tdp_w"),
+            return self._node_from_dict_locked(name, node_dict)
+
+    def _node_from_dict_locked(self, name: str, node_dict: Dict[str, Any]) -> Optional[Node]:
+        try:
+            hardware = node_dict.get("hardware") or {}
+            runtime = node_dict.get("runtime") or {}
+            k8s = node_dict.get("k8s") or {}
+            pool_info = node_dict.get("pool") or {}
+            network_info = node_dict.get("network") or {}
+
+            hw = HardwareSpec(
+                cpu_cores=int(hardware.get("cpu_cores", 0)),
+                base_ghz=float(hardware.get("base_ghz", 0.0)),
+                memory_gb=int(hardware.get("memory_gb", 0)),
+                gpu_vram_gb=int(hardware.get("gpu_vram_gb", 0)),
+                arch=hardware.get("arch", "amd64"),
+                tdp_w=hardware.get("tdp_w"),
+                memory_mhz=hardware.get("memory_mhz"),
+                memory_type=hardware.get("memory_type"),
+                accelerators=list(hardware.get("accelerators", [])),
+            )
+            rt = NodeRuntime(
+                native_formats=list(runtime.get("native_formats", ["native"])),
+                emulation_support=list(runtime.get("emulation_support", [])),
+                wasm_support=bool(runtime.get("wasm_support", False)),
+            )
+            k8s_info = None
+            if k8s:
+                labels = dict((k8s.get("labels") or {}))
+                k8s_info = KubernetesInfo(
+                    node_name=k8s.get("node_name", name),
+                    labels=labels,
+                    allocatable_cpu=float(k8s.get("allocatable_cpu", 0.0)),
+                    allocatable_mem_gb=float(k8s.get("allocatable_mem_gb", 0.0)),
+                    zone=k8s.get("zone"),
                 )
-                rt = NodeRuntime(
-                    native_formats=node_dict["runtime"].get("native_formats", ["native"]),
-                    emulation_support=node_dict["runtime"].get("emulation_support", []),
-                    wasm_support=node_dict["runtime"].get("wasm_support", False),
-                )
-                k8s_info = None
-                if "k8s" in node_dict and node_dict["k8s"]:
-                    k8s_info = KubernetesInfo(
-                        node_name=node_dict["k8s"].get("node_name", name),
-                        labels=node_dict["k8s"].get("labels", {}),
-                        allocatable_cpu=node_dict["k8s"].get("allocatable_cpu", 0.0),
-                        allocatable_mem_gb=node_dict["k8s"].get("allocatable_mem_gb", 0.0),
-                        zone=node_dict["k8s"].get("zone"),
-                    )
-                return Node(name=name, hardware=hw, runtime=rt, k8s=k8s_info)
-            except Exception:
-                return None
+            network = None
+            if network_info:
+                try:
+                    network = NetworkIdentity(**network_info)
+                except TypeError:
+                    network = None
+            pool_key = pool_info.get("key")
+            pool_score = float(pool_info.get("score", 0.0)) if pool_info else 0.0
+            node_obj = Node(
+                name=name,
+                hardware=hw,
+                runtime=rt,
+                k8s=k8s_info,
+                available=not (node_dict.get("dyn") or {}).get("down", False),
+                network=network,
+                pool_key=pool_key,
+                pool_score=pool_score,
+            )
+            return node_obj
+        except Exception:
+            return None
+
+    def _apply_virtualization_locked(self, name: str, node: Dict[str, Any]) -> None:
+        k8s = node.get("k8s") or {}
+        labels = dict((k8s.get("labels") or {}))
+        cluster_name = labels.get("dt.cluster.name")
+        if not cluster_name:
+            return
+
+        cluster_type = labels.get("dt.cluster.type", "unknown")
+        cluster_info = self.clusters.get(cluster_name)
+        if not cluster_info:
+            cluster_info = ClusterInfo(name=cluster_name, cluster_type=cluster_type or "unknown")
+
+        self._virtual.register_cluster(cluster_info)
+
+        node_dict = copy.deepcopy(node)
+        node_dict.setdefault("k8s", {})["labels"] = labels
+        node_dict.pop("pool", None)
+        node_dict.pop("network", None)
+        node_obj = self._node_from_dict_locked(name, node_dict)
+        if not node_obj:
+            self.clusters[cluster_name] = cluster_info
+            return
+
+        identity, pool = self._virtual.ensure_node(cluster_name, node_obj)
+        if identity:
+            node["network"] = asdict(identity)
+            labels["dt.virtual.cluster_id"] = str(identity.cluster_id)
+            labels["dt.virtual.node_id"] = str(identity.node_id)
+            labels["dt.virtual.mac"] = identity.mac_address
+            cluster_info.cluster_id = identity.cluster_id
+            cluster_info.network_cidr = identity.network_cidr
+            cluster_info.pod_cidr = identity.pod_cidr
+            cluster_info.service_cidr = identity.service_cidr
+
+        if pool:
+            node.setdefault("pool", {})
+            node["pool"].update({
+                "key": node_obj.pool_key,
+                "score": node_obj.pool_score,
+                "characteristics": dict(pool.characteristics),
+            })
+            cluster_info.node_pools.setdefault(pool.pool_key, [])
+            if name not in cluster_info.node_pools[pool.pool_key]:
+                cluster_info.node_pools[pool.pool_key].append(name)
+
+        if node_obj.pool_key:
+            labels["dt.node.pool"] = node_obj.pool_key
+
+        node.setdefault("k8s", {})["labels"] = labels
+
+        cluster_nodes = set(cluster_info.nodes)
+        cluster_nodes.add(name)
+        cluster_info.nodes = sorted(cluster_nodes)
+        self.clusters[cluster_name] = cluster_info
+
+    def _refresh_virtual_topology_from_nodes_locked(self) -> None:
+        self._virtual = VirtualTopology()
+        for cluster_name, info in list(self.clusters.items()):
+            info.node_pools = {}
+            info.nodes = []
+            self._virtual.register_cluster(info)
+            self.clusters[cluster_name] = info
+
+        for name, node in self.nodes_by_name.items():
+            node.pop("network", None)
+            node.pop("pool", None)
+            self._apply_virtualization_locked(name, node)
     
     def mark_node_availability(self, node_name: str, available: bool) -> None:
         """Mark a node as available or unavailable (for full DTState implementation)."""
@@ -983,41 +1186,78 @@ class DTState:
                 # Invalidate snapshot cache
                 self._invalidate_snapshot_locked()
 
+    def register_cluster(self, cluster_info: ClusterInfo) -> None:
+        """Register cluster metadata for compatibility with the planner."""
+        with self._lock:
+            self._virtual.register_cluster(cluster_info)
+            self.clusters[cluster_info.name] = cluster_info
+
+    def get_cluster(self, node_name: str) -> Optional[str]:
+        """Return the cluster name for a given node, if available."""
+        with self._lock:
+            node_dict = self.nodes_by_name.get(node_name, {})
+            labels = (node_dict.get("k8s") or {}).get("labels", {})
+            cluster_label = labels.get("dt.cluster.name")
+            if cluster_label:
+                return cluster_label
+
+            for cluster_name, cluster_info in self.clusters.items():
+                if node_name in cluster_info.nodes:
+                    return cluster_name
+
+            for cluster_name in self.clusters.keys():
+                if node_name.startswith(cluster_name):
+                    return cluster_name
+
+            return None
+
     def list_nodes(self) -> List[Node]:
         """Return list of Node objects from the state."""
         with self._lock:
             nodes = []
             for name, node_dict in self.nodes_by_name.items():
-                try:
-                    hw = HardwareSpec(
-                        cpu_cores=node_dict["hardware"]["cpu_cores"],
-                        base_ghz=node_dict["hardware"]["base_ghz"],
-                        memory_gb=node_dict["hardware"]["memory_gb"],
-                        gpu_vram_gb=node_dict["hardware"].get("gpu_vram_gb", 0),
-                        arch=node_dict["hardware"].get("arch", "amd64"),
-                        tdp_w=node_dict["hardware"].get("tdp_w"),
-                    )
-                    rt = NodeRuntime(
-                        native_formats=node_dict["runtime"].get("native_formats", ["native"]),
-                        emulation_support=node_dict["runtime"].get("emulation_support", []),
-                        wasm_support=node_dict["runtime"].get("wasm_support", False),
-                    )
-                    k8s_info = None
-                    if "k8s" in node_dict and node_dict["k8s"]:
-                        k8s_info = KubernetesInfo(
-                            node_name=node_dict["k8s"].get("node_name", name),
-                            labels=node_dict["k8s"].get("labels", {}),
-                            allocatable_cpu=node_dict["k8s"].get("allocatable_cpu", 0.0),
-                            allocatable_mem_gb=node_dict["k8s"].get("allocatable_mem_gb", 0.0),
-                            zone=node_dict["k8s"].get("zone"),
-                        )
-                    nodes.append(Node(name=name, hardware=hw, runtime=rt, k8s=k8s_info))
-                except Exception:
-                    continue
+                node = self._node_from_dict_locked(name, node_dict)
+                if node:
+                    nodes.append(node)
             return nodes
 
     def upsert_node(self, node: Node) -> None:
         """Add or update a node from a Node dataclass object."""
+        cluster_name = None
+        cluster_labels: Dict[str, str] = {}
+        if node.k8s:
+            cluster_labels = dict(node.k8s.labels or {})
+            cluster_name = cluster_labels.get("dt.cluster.name")
+
+        if cluster_name:
+            cluster_info = self.clusters.get(cluster_name)
+            if not cluster_info:
+                cluster_type = cluster_labels.get("dt.cluster.type", "unknown")
+                cluster_info = ClusterInfo(name=cluster_name, cluster_type=cluster_type)
+            self._virtual.register_cluster(cluster_info)
+            identity, pool = self._virtual.ensure_node(cluster_name, node)
+            if identity:
+                node.network = identity
+                if node.k8s:
+                    node.k8s.labels = cluster_labels
+                    node.k8s.labels.setdefault("dt.cluster.name", cluster_name)
+                    node.k8s.labels["dt.virtual.cluster_id"] = str(identity.cluster_id)
+                    node.k8s.labels["dt.virtual.node_id"] = str(identity.node_id)
+                    node.k8s.labels["dt.virtual.mac"] = identity.mac_address
+                cluster_info.cluster_id = identity.cluster_id
+                cluster_info.network_cidr = identity.network_cidr
+                cluster_info.pod_cidr = identity.pod_cidr
+                cluster_info.service_cidr = identity.service_cidr
+            if pool:
+                cluster_info.node_pools.setdefault(pool.pool_key, [])
+                if node.name not in cluster_info.node_pools[pool.pool_key]:
+                    cluster_info.node_pools[pool.pool_key].append(node.name)
+            if node.pool_key and node.k8s:
+                node.k8s.labels["dt.node.pool"] = node.pool_key
+            if node.name not in cluster_info.nodes:
+                cluster_info.nodes.append(node.name)
+            self.clusters[cluster_name] = cluster_info
+
         descriptor = {
             "name": node.name,
             "hardware": {
@@ -1027,6 +1267,9 @@ class DTState:
                 "gpu_vram_gb": node.hardware.gpu_vram_gb,
                 "arch": node.hardware.arch,
                 "tdp_w": node.hardware.tdp_w,
+                "memory_mhz": node.hardware.memory_mhz,
+                "memory_type": node.hardware.memory_type,
+                "accelerators": list(node.hardware.accelerators),
             },
             "runtime": {
                 "native_formats": node.runtime.native_formats,
@@ -1041,7 +1284,51 @@ class DTState:
                 "zone": node.k8s.zone,
             } if node.k8s else {},
         }
+        if node.network:
+            descriptor["network"] = asdict(node.network)
+        if node.pool_key:
+            descriptor["pool"] = {
+                "key": node.pool_key,
+                "score": node.pool_score,
+            }
         self.add_or_update_node(descriptor, persist=False, preserve_runtime=True)
+
+    def add_job(self, job: Job) -> None:
+        with self._lock:
+            self._jobs[job.name] = job
+
+    def get_job(self, job_name: str) -> Optional[Job]:
+        with self._lock:
+            return self._jobs.get(job_name)
+
+    def record_observed_metrics(self, plan_id: str, metrics: ObservedMetrics) -> None:
+        with self._lock:
+            self.observed_metrics[plan_id] = metrics
+
+    def get_observed_metrics(self, plan_id: str) -> Optional[ObservedMetrics]:
+        with self._lock:
+            return self.observed_metrics.get(plan_id)
+
+    def list_node_pools(self) -> List[NodePool]:
+        with self._lock:
+            return self._virtual.list_pools()
+
+    def get_virtual_identity(self, node_name: str) -> Optional[NetworkIdentity]:
+        with self._lock:
+            ident = self._virtual.get_identity(node_name)
+            if ident:
+                return ident
+            node = self.nodes_by_name.get(node_name)
+            if node and node.get("network"):
+                try:
+                    return NetworkIdentity(**node["network"])
+                except TypeError:
+                    return None
+            return None
+
+    def describe_virtual_topology(self) -> Dict[str, Any]:
+        with self._lock:
+            return self._virtual.describe()
 
     def add_or_update_node(
         self,
@@ -1119,6 +1406,8 @@ class DTState:
                 if health.get("uptime_hours") is None
                 else safe_float(health.get("uptime_hours"), 0.0),
             )
+
+            self._apply_virtualization_locked(name, node)
 
             self.nodes_by_name[name] = node
             self._nodes_fingerprint[f"{name}.yaml"] = time.time()

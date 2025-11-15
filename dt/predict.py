@@ -1,117 +1,128 @@
 from __future__ import annotations
 
-import random
-from typing import Dict, List, Tuple
 from dataclasses import dataclass
-
-import numpy as np
+from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from dt.des_simulator import (
-	DEFAULT_QEMU_OVERHEAD,
-	DiscreteEventSimulator,
-	compute_network_delay_ms,
-	compute_stage_runtime_ms,
+    DEFAULT_QEMU_OVERHEAD,
+    DiscreteEventSimulator,
+    compute_network_delay_ms,
+    compute_stage_runtime_ms,
 )
 from dt.scaling import ResourceScaler, DEFAULT_SCALER
-from dt.state import DTState, Job, JobStage, Node, PlacementDecision, Plan
+
+
+if TYPE_CHECKING:
+    from dt.state import DTState, Job, JobStage, Node, PlacementDecision
 
 
 @dataclass
 class SimulationResult:
-	latency_ms: float
-	energy_kwh: float
-	sla_violations: int
-	risk_score: float
-	completed_stages: int = 0
-	failed_stages: int = 0
+    latency_ms: float
+    energy_kwh: float
+    sla_violations: int
+    risk_score: float
+    completed_stages: int = 0
+    failed_stages: int = 0
 
-	@property
-	def violations(self) -> int:
-		return self.sla_violations
+    @property
+    def violations(self) -> int:
+        return self.sla_violations
 
 
 class PredictiveSimulator:
-	def __init__(
-		self,
-		state: DTState,
-		*,
-		failure_rate: float = 0.0,
-		scaler: Optional[ResourceScaler] = None
-	) -> None:
-		self.state = state
-		self.failure_rate = max(0.0, float(failure_rate))
-		self.scaler = scaler or DEFAULT_SCALER
+    def __init__(
+        self,
+        state: DTState,
+        *,
+        failure_rate: float = 0.0,
+        scaler: Optional[ResourceScaler] = None,
+    ) -> None:
+        self.state = state
+        self.failure_rate = max(0.0, float(failure_rate))
+        self.scaler = scaler or DEFAULT_SCALER
 
-	def compute_stage_latency_ms(self, stage: JobStage, node: Node, exec_format: str) -> float:
-		return compute_stage_runtime_ms(stage, node, exec_format, DEFAULT_QEMU_OVERHEAD)
+    def compute_stage_latency_ms(
+        self, stage: JobStage, node: Node, exec_format: str
+    ) -> float:
+        return compute_stage_runtime_ms(stage, node, exec_format, DEFAULT_QEMU_OVERHEAD)
 
-	def compute_network_delay_ms(self, prev_node: Node, node: Node) -> float:
-		return compute_network_delay_ms(self.state, prev_node.name, node.name)
+    def compute_network_delay_ms(self, prev_node: Node, node: Node) -> float:
+        return compute_network_delay_ms(self.state, prev_node.name, node.name)
 
-	def score_plan(self, job: Job, placements: Dict[str, PlacementDecision]) -> SimulationResult:
-		des = DiscreteEventSimulator(
-			self.state,
-			qemu_overhead_map=DEFAULT_QEMU_OVERHEAD,
-			failure_rate=self.failure_rate,
-			scaler=self.scaler,
-		)
-		metrics = des.simulate(job, placements)
-		return SimulationResult(
-			latency_ms=metrics.latency_ms,
-			energy_kwh=metrics.energy_kwh,
-			sla_violations=1 if metrics.sla_violated else 0,
-			risk_score=metrics.risk_score,
-			completed_stages=metrics.completed_stages,
-			failed_stages=metrics.failed_stages,
-		)
+    def score_plan(self, job: Job, placements: Dict[str, PlacementDecision]) -> SimulationResult:
+        des = DiscreteEventSimulator(
+            self.state,
+            qemu_overhead_map=DEFAULT_QEMU_OVERHEAD,
+            failure_rate=self.failure_rate,
+            scaler=self.scaler,
+        )
+        metrics = des.simulate(job, placements)
+        return SimulationResult(
+            latency_ms=metrics.latency_ms,
+            energy_kwh=metrics.energy_kwh,
+            sla_violations=1 if metrics.sla_violated else 0,
+            risk_score=metrics.risk_score,
+            completed_stages=metrics.completed_stages,
+            failed_stages=metrics.failed_stages,
+        )
 
-	def score_plan_legacy(self, job: Job, placements: Dict[str, PlacementDecision]) -> SimulationResult:
-		latency, energy, violations, risk = self._legacy_score_plan(job, placements)
-		return SimulationResult(
-			latency_ms=latency,
-			energy_kwh=energy,
-			sla_violations=violations,
-			risk_score=risk,
-			completed_stages=len(job.stages),
-			failed_stages=0,
-		)
+    def score_plan_legacy(
+        self, job: Job, placements: Dict[str, PlacementDecision]
+    ) -> SimulationResult:
+        latency, energy, violations, risk = self._legacy_score_plan(job, placements)
+        return SimulationResult(
+            latency_ms=latency,
+            energy_kwh=energy,
+            sla_violations=violations,
+            risk_score=risk,
+            completed_stages=len(job.stages),
+            failed_stages=0,
+        )
 
-	def _legacy_score_plan(self, job: Job, placements: Dict[str, PlacementDecision]) -> Tuple[float, float, int, float]:
-		total_latency = 0.0
-		total_energy_kwh = 0.0
-		violations = 0
-		prev_node_by_stage: Dict[str, Node] = {}
-		for stage in job.stages:
-			decision = placements[stage.id]
-			node = self.state.get_node(decision.node_name)
-			if node is None:
-				violations += 1
-				continue
-			stage_latency = self.compute_stage_latency_ms(stage, node, decision.exec_format)
-			if stage.predecessor:
-				prev_node = prev_node_by_stage.get(stage.predecessor, node)
-				stage_latency += self.compute_network_delay_ms(prev_node, node)
-			total_latency += stage_latency
-			power_w = node.hardware.tdp_w or 80.0
-			total_energy_kwh += (power_w / 1000.0) * (stage_latency / 3600000.0)
-			prev_node_by_stage[stage.id] = node
-		if total_latency > job.deadline_ms:
-			violations += 1
-		risk = 0.0
-		for decision in placements.values():
-			node = self.state.get_node(decision.node_name)
-			if node:
-				risk += 0.1 if not node.available else 0.0
-		return total_latency, total_energy_kwh, violations, risk
+    def _legacy_score_plan(
+        self, job: Job, placements: Dict[str, PlacementDecision]
+    ) -> Tuple[float, float, int, float]:
+        total_latency = 0.0
+        total_energy_kwh = 0.0
+        violations = 0
+        prev_node_by_stage: Dict[str, Node] = {}
+        for stage in job.stages:
+            decision = placements[stage.id]
+            node = self.state.get_node(decision.node_name)
+            if node is None:
+                violations += 1
+                continue
+            stage_latency = self.compute_stage_latency_ms(
+                stage, node, decision.exec_format
+            )
+            if stage.predecessor:
+                prev_node = prev_node_by_stage.get(stage.predecessor, node)
+                stage_latency += self.compute_network_delay_ms(prev_node, node)
+            total_latency += stage_latency
+            power_w = node.hardware.tdp_w or 80.0
+            total_energy_kwh += (power_w / 1000.0) * (stage_latency / 3600000.0)
+            prev_node_by_stage[stage.id] = node
+        if total_latency > job.deadline_ms:
+            violations += 1
+        risk = 0.0
+        for decision in placements.values():
+            node = self.state.get_node(decision.node_name)
+            if node:
+                risk += 0.1 if not node.available else 0.0
+        return total_latency, total_energy_kwh, violations, risk
 
-	def choose_exec_format(self, stage: JobStage, node: Node) -> str:
-		if node.hardware.arch in stage.constraints.arch and "native" in stage.constraints.formats:
-			return "native"
-		if node.runtime.wasm_support and "wasm" in stage.constraints.formats:
-			return "wasm"
-		if stage.constraints.arch and stage.constraints.arch[0] in node.runtime.emulation_support:
-			return f"qemu-{stage.constraints.arch[0]}"
-		return "native"
+    def choose_exec_format(self, stage: JobStage, node: Node) -> str:
+        if node.hardware.arch in stage.constraints.arch and "native" in stage.constraints.formats:
+            return "native"
+        if node.runtime.wasm_support and "wasm" in stage.constraints.formats:
+            return "wasm"
+        if (
+            stage.constraints.arch
+            and stage.constraints.arch[0] in node.runtime.emulation_support
+        ):
+            return f"qemu-{stage.constraints.arch[0]}"
+        return "native"
 
 # Helpers for predictive telemetry and trend-aware scoring.
 # The predictors here remain intentionally lightweight so they can execute inside
@@ -127,8 +138,6 @@ class PredictiveSimulator:
 # and integration tests can continue to provide deterministic data.
 
 import time
-from dataclasses import dataclass
-from typing import Dict, Optional
 
 def _clamp(x: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, x))
