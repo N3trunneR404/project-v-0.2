@@ -1,0 +1,25 @@
+=== Running Chaos Engineering Tests ===
+
+namespace/dt-fabric configured
+Test 1: Network Partition (zone-a <-> zone-b)
+Applying network partition chaos...
+networkchaos.chaos-mesh.org/edge-partition created
+✓ Network partition applied
+Waiting 10 seconds...
+Cleaning up network partition...
+networkchaos.chaos-mesh.org "edge-partition" deleted
+✓ Network partition test complete
+
+Test 2: Zone Blackout (zone-a pod failures)
+Applying zone blackout chaos...
+workflow.chaos-mesh.org/zone-blackout created
+✓ Zone blackout applied
+Waiting 10 seconds...
+Cleaning up zone blackout...
+workflow.chaos-mesh.org "zone-blackout" deleted
+✓ Zone blackout test complete
+
+=== Chaos Tests Complete ===
+
+Check DT API logs for resilience behavior:
+  kubectl logs -l app=dt-api -n dt-fabric --tail=50

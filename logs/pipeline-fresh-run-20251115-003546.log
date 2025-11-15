@@ -1,0 +1,103 @@
+==========================================
+DIGITAL TWIN EXPERIMENT PIPELINE
+==========================================
+Target: http://127.0.0.1:8080
+Runs per experiment: 5
+
+Step 1: Ensuring port-forward is active...
+✓ Port-forward already active (PID: 1680152)
+✓ Port-forward active
+
+Step 2: Verifying API accessibility...
+✓ API accessible
+
+Step 3: Running experiments (5 times each)...
+This may take several minutes...
+
+======================================================================
+DIGITAL TWIN EXPERIMENT METRICS COLLECTION
+======================================================================
+Target API: http://127.0.0.1:8080
+Runs per experiment: 5
+======================================================================
+
+======================================================================
+Experiment: experiments.v1_controller_vs_baseline
+======================================================================
+  Run 1/5... ✓ (10 data points)
+  Run 2/5... ✓ (10 data points)
+  Run 3/5... ✓ (10 data points)
+  Run 4/5... ✓ (10 data points)
+  Run 5/5... ✓ (10 data points)
+  ✓ Aggregated: 50 total data points
+
+======================================================================
+Experiment: experiments.v2_predictive_ablation
+======================================================================
+  Run 1/5... ✓ (20 data points)
+  Run 2/5... ✓ (20 data points)
+  Run 3/5... ✓ (20 data points)
+  Run 4/5... ✓ (20 data points)
+  Run 5/5... ✓ (20 data points)
+  ✓ Aggregated: 100 total data points
+
+======================================================================
+Experiment: experiments.v3_overhead
+======================================================================
+  Run 1/5... ✓ (2 data points)
+  Run 2/5... ✓ (2 data points)
+  Run 3/5... ✓ (2 data points)
+  Run 4/5... ✓ (2 data points)
+  Run 5/5... ✓ (2 data points)
+  ✓ Aggregated: 10 total data points
+
+======================================================================
+Experiment: experiments.v4_shadow_plans
+======================================================================
+  Run 1/5... ✓ (1 data points)
+  Run 2/5... ✓ (1 data points)
+  Run 3/5... ✓ (1 data points)
+  Run 4/5... ✓ (1 data points)
+  Run 5/5... ✓ (1 data points)
+  ✓ Aggregated: 5 total data points
+
+======================================================================
+Experiment: experiments.v5_scalability_kwok
+======================================================================
+  Run 1/5... ✓ (0 data points)
+  Run 2/5... ✓ (0 data points)
+  Run 3/5... ✓ (0 data points)
+  Run 4/5... ✓ (0 data points)
+  Run 5/5... ✓ (0 data points)
+  ✓ Aggregated: 0 total data points
+
+======================================================================
+Experiment: experiments.v6_drift_robustness
+======================================================================
+  Run 1/5... ✓ (15 data points)
+  Run 2/5... ✓ (15 data points)
+  Run 3/5... ✓ (15 data points)
+  Run 4/5... ✓ (15 data points)
+  Run 5/5... ✓ (15 data points)
+  ✓ Aggregated: 75 total data points
+
+✓ Raw data saved: /home/whiterose/final-year-project_mod/reports/experiments/experiments-20251115-003757.json
+
+✓ Comprehensive report generated: /home/whiterose/final-year-project_mod/reports/experiments/EXPERIMENTAL_RESULTS-20251115-003757.md
+
+======================================================================
+METRICS COLLECTION COMPLETE
+======================================================================
+📊 Report: /home/whiterose/final-year-project_mod/reports/experiments/EXPERIMENTAL_RESULTS-20251115-003757.md
+📁 Data: /home/whiterose/final-year-project_mod/reports/experiments/experiments-20251115-003757.json
+======================================================================
+
+==========================================
+PIPELINE COMPLETE
+==========================================
+
+Results are in: reports/experiments/
+
+total 236K
+-rw-rw-r-- 1 whiterose whiterose 8.8K Nov 15 00:37 EXPERIMENTAL_RESULTS-20251115-003757.md
+-rw-rw-r-- 1 whiterose whiterose 222K Nov 15 00:37 experiments-20251115-003757.json

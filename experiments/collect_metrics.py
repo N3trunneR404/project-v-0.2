@@ -69,14 +69,45 @@ def run_experiment_capture_output(module_name: str, dt_url: str) -> tuple[List[D
 
 def extract_metrics_from_json(data: Dict[str, Any]) -> Dict[str, Any]:
     """Extract standardized metrics from JSON response."""
-    return {
+    metrics = {
         "predicted_latency_ms": float(data.get("predicted_latency_ms", 0.0)),
         "predicted_energy_kwh": float(data.get("predicted_energy_kwh", 0.0)),
         "risk_score": float(data.get("risk_score", 0.0)),
         "plan_id": data.get("plan_id", ""),
         "num_placements": len(data.get("placements", {})),
         "execution_time_ms": float(data.get("execution_time_ms", 0.0)),
+        "origin_cluster": data.get("origin_cluster", ""),
+        "resource_scale": float(data.get("resource_scale", 0.01)),
     }
+    
+    # Extract verification metrics if available
+    if "verification" in data:
+        verify = data["verification"]
+        if "observed" in verify:
+            obs = verify["observed"]
+            metrics["observed_latency_ms"] = float(obs.get("latency_ms", 0.0))
+            metrics["observed_energy_kwh"] = float(obs.get("energy_kwh", 0.0))
+            metrics["observed_cpu_util"] = float(obs.get("cpu_util", 0.0))
+            metrics["observed_mem_peak_gb"] = float(obs.get("mem_peak_gb", 0.0))
+        
+        # Calculate errors if both predicted and observed exist
+        if "predicted_latency_ms" in metrics and "observed_latency_ms" in metrics:
+            pred_lat = metrics["predicted_latency_ms"]
+            obs_lat = metrics["observed_latency_ms"]
+            if pred_lat > 0:
+                metrics["latency_error_pct"] = abs((obs_lat - pred_lat) / pred_lat) * 100.0
+            else:
+                metrics["latency_error_pct"] = 0.0
+        
+        if "predicted_energy_kwh" in metrics and "observed_energy_kwh" in metrics:
+            pred_eng = metrics["predicted_energy_kwh"]
+            obs_eng = metrics["observed_energy_kwh"]
+            if pred_eng > 0:
+                metrics["energy_error_pct"] = abs((obs_eng - pred_eng) / pred_eng) * 100.0
+            else:
+                metrics["energy_error_pct"] = 0.0
+    
+    return metrics
 
 
 def extract_metrics_from_text(text_lines: List[str], exp_name: str) -> List[Dict[str, Any]]:
@@ -186,6 +217,20 @@ def run_all_experiments_n_times(dt_url: str, n_runs: int = 5) -> Dict[str, Any]:
             for metric in run["metrics"]:
                 all_latencies.append(metric["predicted_latency_ms"])
                 all_energies.append(metric["predicted_energy_kwh"])
+                
+                # Collect verification metrics if available
+                if "observed_latency_ms" in metric:
+                    if "observed_latencies" not in exp_data:
+                        exp_data["observed_latencies"] = []
+                        exp_data["observed_energies"] = []
+                        exp_data["latency_errors"] = []
+                        exp_data["energy_errors"] = []
+                    exp_data["observed_latencies"].append(metric["observed_latency_ms"])
+                    exp_data["observed_energies"].append(metric["observed_energy_kwh"])
+                    if "latency_error_pct" in metric:
+                        exp_data["latency_errors"].append(metric["latency_error_pct"])
+                    if "energy_error_pct" in metric:
+                        exp_data["energy_errors"].append(metric["energy_error_pct"])
                 all_risks.append(metric["risk_score"])
                 all_exec_times.append(metric["execution_time_ms"])
         
@@ -196,6 +241,15 @@ def run_all_experiments_n_times(dt_url: str, n_runs: int = 5) -> Dict[str, Any]:
             "execution_time_ms": calculate_stats(all_exec_times),
             "total_data_points": len(all_latencies),
         }
+        
+        # Aggregate verification metrics if available
+        if "observed_latencies" in exp_data and exp_data["observed_latencies"]:
+            exp_data["aggregated_metrics"]["observed_latency_ms"] = calculate_stats(exp_data["observed_latencies"])
+            exp_data["aggregated_metrics"]["observed_energy_kwh"] = calculate_stats(exp_data["observed_energies"])
+            if exp_data["latency_errors"]:
+                exp_data["aggregated_metrics"]["latency_error_pct"] = calculate_stats(exp_data["latency_errors"])
+            if exp_data["energy_errors"]:
+                exp_data["aggregated_metrics"]["energy_error_pct"] = calculate_stats(exp_data["energy_errors"])
         
         # Special handling for scalability experiment
         if "scalability" in exp_name.lower():

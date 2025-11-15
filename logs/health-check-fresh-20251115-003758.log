@@ -1,0 +1,35 @@
+======================================================================
+API HEALTH CHECK
+======================================================================
+Testing: http://127.0.0.1:8080
+
+Testing GET /snapshot... ✓ (93.3ms)
+Testing POST /plan... ✓ (93.0ms)
+Testing POST /plan... ✓ (92.5ms)
+Testing POST /plan... ✓ (92.5ms)
+Testing POST /plan... ✓ (92.8ms)
+Testing POST /plan... ✓ (93.3ms)
+Testing POST /observe... ✓ (92.4ms)
+Testing POST /observe... ✓ (92.4ms)
+Testing POST /observe... ✗ Expected status 200, got 400
+Testing POST /plan... ✗ Expected status 400, got 200
+
+======================================================================
+KUBERNETES INTEGRATION CHECK
+======================================================================
+✓ Found 3 nodes in snapshot
+✓ Observe endpoint functional
+
+======================================================================
+SUMMARY
+======================================================================
+Total Tests: 10
+Passed: 8
+Failed: 2
+Success Rate: 80.0%
+
+⚠ Found 2 issues:
+  - Observe - Invalid Event: Expected status 200, got 400
+  - Plan - Impossible Constraints: Expected status 400, got 200
+
+✓ Detailed report saved: /home/whiterose/final-year-project_mod/reports/health/api-health-20251115-003759.json

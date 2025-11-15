@@ -6,11 +6,19 @@ import math
 from dt.state import DTState, Job, JobStage, PlacementDecision, Node
 from dt.predict import PredictiveSimulator
 from dt.policy.base import Policy
+from dt.cluster_manager import ClusterManager
+from typing import Optional
 
 
 class ResilientPolicy(Policy):
-	def __init__(self, state: DTState, simulator: PredictiveSimulator) -> None:
+	def __init__(
+		self,
+		state: DTState,
+		simulator: PredictiveSimulator,
+		cluster_manager: Optional[ClusterManager] = None
+	) -> None:
 		super().__init__(state, simulator)
+		self.cluster_manager = cluster_manager
 
 	def _reliability(self, node: Node) -> float:
 		penalty = 0.2 if not node.available else 0.0
@@ -25,6 +33,24 @@ class ResilientPolicy(Policy):
 			nodes.append(node)
 		return nodes
 
+	def _compute_origin_latency(self, job: Job, candidate_node: Node) -> float:
+		"""Compute latency from job origin to candidate node."""
+		if not job.origin or not self.cluster_manager:
+			return 0.0
+		
+		candidate_cluster = self.state.get_cluster(candidate_node.name)
+		if not candidate_cluster:
+			return 0.0
+		
+		origin_cluster = job.origin.cluster
+		latency_ms = self.cluster_manager.get_latency_between(
+			origin_cluster,
+			candidate_cluster,
+			job.origin.node,
+			candidate_node.name
+		)
+		return latency_ms
+
 	def place(self, job: Job) -> Dict[str, PlacementDecision]:
 		placements: Dict[str, PlacementDecision] = {}
 		prev_node_for: Dict[str, Node] = {}
@@ -33,8 +59,16 @@ class ResilientPolicy(Policy):
 			for node in self._candidate_nodes(stage):
 				exec_format = self.sim.choose_exec_format(stage, node)
 				lat = self.sim.compute_stage_latency_ms(stage, node, exec_format)
+				
+				# Add network delay from predecessor
 				if stage.predecessor and stage.predecessor in prev_node_for:
 					lat += self.sim.compute_network_delay_ms(prev_node_for[stage.predecessor], node)
+				
+				# Add origin latency for first stage
+				if not stage.predecessor and job.origin:
+					origin_lat = self._compute_origin_latency(job, node)
+					lat += origin_lat
+				
 				rel = self._reliability(node)
 				score = rel - 0.001 * lat
 				if score > best[1]:

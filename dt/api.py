@@ -5,28 +5,33 @@ from typing import Any, Dict
 
 from flask import Flask, jsonify, request
 
+from typing import Optional
+
 from dt.actuator import Actuator
 from dt.predict import PredictiveSimulator
 from dt.state import DTState, Job, JobStage, StageCompute, StageConstraints
 from dt.policy.greedy import GreedyLatencyPolicy
 from dt.policy.resilient import ResilientPolicy
 from dt.policy.cvar import RiskAwareCvarPolicy
+from dt.cluster_manager import ClusterManager
 
 
-def create_app(state: DTState) -> Flask:
+def create_app(state: DTState, cluster_manager: Optional[ClusterManager] = None) -> Flask:
 	app = Flask(__name__)
 	# Store state in app config so it's accessible in all endpoints
 	app.config['dt_state'] = state
+	app.config['cluster_manager'] = cluster_manager
+	
 	sim = PredictiveSimulator(state)
-	actuator = Actuator()
+	actuator = Actuator(cluster_manager=cluster_manager)
 
 	def select_policy(name: str):
 		name = (name or "greedy").lower()
 		if name == "resilient":
-			return ResilientPolicy(state, sim)
+			return ResilientPolicy(state, sim, cluster_manager=cluster_manager)
 		if name == "cvar":
-			return RiskAwareCvarPolicy(state, sim)
-		return GreedyLatencyPolicy(state, sim)
+			return RiskAwareCvarPolicy(state, sim, cluster_manager=cluster_manager)
+		return GreedyLatencyPolicy(state, sim, cluster_manager=cluster_manager)
 
 	@app.post("/plan")
 	def plan() -> Any:
@@ -115,10 +120,35 @@ def create_app(state: DTState) -> Flask:
 				pass
 		return jsonify({"nodes": [n.name for n in nodes]})
 
+	@app.get("/plan/<plan_id>/verify")
+	def verify_plan(plan_id: str) -> Any:
+		"""Get verification results for a plan."""
+		state = app.config['dt_state']
+		
+		# Get observed metrics
+		observed = state.get_observed_metrics(plan_id)
+		if not observed:
+			return jsonify({"error": f"No observed metrics found for plan {plan_id}"}), 404
+		
+		# Return observed metrics
+		# Note: In full implementation, predicted metrics would be retrieved from stored plan
+		return jsonify({
+			"plan_id": plan_id,
+			"observed": {
+				"latency_ms": observed.latency_ms,
+				"cpu_util": observed.cpu_util,
+				"mem_peak_gb": observed.mem_peak_gb,
+				"energy_kwh": observed.energy_kwh,
+				"completed_at": observed.completed_at,
+			},
+			"note": "Predicted values should be retrieved from stored plan in full implementation"
+		})
+
 	return app
 
 
 def _job_from_dict(job: Dict[str, Any]) -> Job:
+	"""Parse job from dictionary, including origin context."""
 	stages = []
 	for stage_spec in job["spec"]["stages"]:
 		compute = StageCompute(
@@ -142,8 +172,19 @@ def _job_from_dict(job: Dict[str, Any]) -> Job:
 				predecessor=stage_spec.get("predecessor"),
 			)
 		)
+	# Parse origin context
+	origin = None
+	if "origin" in job.get("metadata", {}):
+		origin_dict = job["metadata"]["origin"]
+		from dt.state import JobOrigin
+		origin = JobOrigin(
+			cluster=origin_dict.get("cluster", "dc-core"),
+			node=origin_dict.get("node"),
+		)
+	
 	return Job(
 		name=job["metadata"]["name"],
 		deadline_ms=int(job["metadata"].get("deadline_ms", 60000)),  # Default 60s if not specified
 		stages=stages,
+		origin=origin,
 	)

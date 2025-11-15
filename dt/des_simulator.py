@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Deque, Dict, Optional, Tuple
 
 from dt.state import DTState, Job, JobStage, Node, PlacementDecision
+from dt.scaling import ResourceScaler, DEFAULT_SCALER
 
 # Baseline overhead factors used across the simulator and heuristic planners.
 DEFAULT_QEMU_OVERHEAD = {
@@ -136,11 +137,13 @@ class DiscreteEventSimulator:
 		qemu_overhead_map: Optional[Dict[str, float]] = None,
 		failure_rate: float = 0.0,
 		rng: Optional[random.Random] = None,
+		scaler: Optional[ResourceScaler] = None,
 	) -> None:
 		self.state = state
 		self.qemu_overhead = qemu_overhead_map or DEFAULT_QEMU_OVERHEAD
 		self.failure_rate = max(0.0, float(failure_rate))
 		self.rng = rng or random.Random()
+		self.scaler = scaler or DEFAULT_SCALER
 
 		self._reset()
 

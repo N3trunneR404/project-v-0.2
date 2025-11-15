@@ -12,6 +12,7 @@ from dt.des_simulator import (
 	compute_network_delay_ms,
 	compute_stage_runtime_ms,
 )
+from dt.scaling import ResourceScaler, DEFAULT_SCALER
 from dt.state import DTState, Job, JobStage, Node, PlacementDecision, Plan
 
 
@@ -30,9 +31,16 @@ class SimulationResult:
 
 
 class PredictiveSimulator:
-	def __init__(self, state: DTState, *, failure_rate: float = 0.0) -> None:
+	def __init__(
+		self,
+		state: DTState,
+		*,
+		failure_rate: float = 0.0,
+		scaler: Optional[ResourceScaler] = None
+	) -> None:
 		self.state = state
 		self.failure_rate = max(0.0, float(failure_rate))
+		self.scaler = scaler or DEFAULT_SCALER
 
 	def compute_stage_latency_ms(self, stage: JobStage, node: Node, exec_format: str) -> float:
 		return compute_stage_runtime_ms(stage, node, exec_format, DEFAULT_QEMU_OVERHEAD)
@@ -45,6 +53,7 @@ class PredictiveSimulator:
 			self.state,
 			qemu_overhead_map=DEFAULT_QEMU_OVERHEAD,
 			failure_rate=self.failure_rate,
+			scaler=self.scaler,
 		)
 		metrics = des.simulate(job, placements)
 		return SimulationResult(

@@ -1,0 +1,257 @@
+{
+  "timestamp": "20251115-003759",
+  "base_url": "http://127.0.0.1:8080",
+  "api_check": {
+    "summary": {
+      "total_tests": 10,
+      "passed": 8,
+      "failed": 2,
+      "success_rate": 80.0
+    },
+    "results": [
+      {
+        "name": "Snapshot",
+        "method": "GET",
+        "path": "/snapshot",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 93.273,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "nodes": [
+            "worker-0",
+            "worker-1",
+            "worker-2"
+          ]
+        }
+      },
+      {
+        "name": "Plan - Valid Job",
+        "method": "POST",
+        "path": "/plan",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 93.00500000000001,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "placements": {
+            "s1": {
+              "exec_format": "native",
+              "node_name": "worker-0",
+              "stage_id": "s1"
+            }
+          },
+          "plan_id": "plan-a65015a1",
+          "predicted_energy_kwh": 0.02261904761904762,
+          "predicted_latency_ms": 857.1428571428571,
+          "risk_score": 0.0,
+          "shadow_plan": {
+            "s1_backup": "worker-0"
+          }
+        }
+      },
+      {
+        "name": "Plan - Invalid Job (Missing Fields)",
+        "method": "POST",
+        "path": "/plan",
+        "status": "ok",
+        "status_code": 400,
+        "response_time_ms": 92.473,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "error": "missing job spec"
+        }
+      },
+      {
+        "name": "Plan - Missing Job",
+        "method": "POST",
+        "path": "/plan",
+        "status": "ok",
+        "status_code": 400,
+        "response_time_ms": 92.46600000000001,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "error": "missing job spec"
+        }
+      },
+      {
+        "name": "Plan - Resilient Strategy",
+        "method": "POST",
+        "path": "/plan",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 92.754,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "placements": {
+            "s1": {
+              "exec_format": "native",
+              "node_name": "worker-0",
+              "stage_id": "s1"
+            }
+          },
+          "plan_id": "plan-e445cfa1",
+          "predicted_energy_kwh": 0.033928571428571426,
+          "predicted_latency_ms": 1285.7142857142856,
+          "risk_score": 0.0,
+          "shadow_plan": {
+            "s1_backup": "worker-0"
+          }
+        }
+      },
+      {
+        "name": "Plan - CVaR Strategy",
+        "method": "POST",
+        "path": "/plan",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 93.304,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "placements": {
+            "s1": {
+              "exec_format": "native",
+              "node_name": "worker-2",
+              "stage_id": "s1"
+            }
+          },
+          "plan_id": "plan-ade1272c",
+          "predicted_energy_kwh": 0.033928571428571426,
+          "predicted_latency_ms": 1285.7142857142856,
+          "risk_score": 0.0,
+          "shadow_plan": {
+            "s1_backup": "worker-2"
+          }
+        }
+      },
+      {
+        "name": "Observe - Node Down",
+        "method": "POST",
+        "path": "/observe",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 92.42999999999999,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "event": "node_down",
+          "node": "worker-0",
+          "status": "ok"
+        }
+      },
+      {
+        "name": "Observe - Node Up",
+        "method": "POST",
+        "path": "/observe",
+        "status": "ok",
+        "status_code": 200,
+        "response_time_ms": 92.441,
+        "errors": [],
+        "warnings": [],
+        "response_data": {
+          "event": "node_up",
+          "node": "worker-0",
+          "status": "ok"
+        }
+      },
+      {
+        "name": "Observe - Invalid Event",
+        "method": "POST",
+        "path": "/observe",
+        "status": "error",
+        "status_code": 400,
+        "response_time_ms": 92.49000000000001,
+        "errors": [
+          "Expected status 200, got 400"
+        ],
+        "warnings": [],
+        "response_data": {
+          "error": "unknown event type: invalid"
+        }
+      },
+      {
+        "name": "Plan - Impossible Constraints",
+        "method": "POST",
+        "path": "/plan",
+        "status": "error",
+        "status_code": 200,
+        "response_time_ms": 92.64,
+        "errors": [
+          "Expected status 400, got 200"
+        ],
+        "warnings": [],
+        "response_data": {
+          "placements": {
+            "s1": {
+              "exec_format": "native",
+              "node_name": "worker-0",
+              "stage_id": "s1"
+            }
+          },
+          "plan_id": "plan-fd9f1889",
+          "predicted_energy_kwh": 0.0,
+          "predicted_latency_ms": 0.0,
+          "risk_score": 1.0,
+          "shadow_plan": {
+            "s1_backup": "worker-0"
+          }
+        }
+      }
+    ],
+    "issues": [
+      {
+        "name": "Observe - Invalid Event",
+        "method": "POST",
+        "path": "/observe",
+        "status": "error",
+        "status_code": 400,
+        "response_time_ms": 92.49000000000001,
+        "errors": [
+          "Expected status 200, got 400"
+        ],
+        "warnings": [],
+        "response_data": {
+          "error": "unknown event type: invalid"
+        }
+      },
+      {
+        "name": "Plan - Impossible Constraints",
+        "method": "POST",
+        "path": "/plan",
+        "status": "error",
+        "status_code": 200,
+        "response_time_ms": 92.64,
+        "errors": [
+          "Expected status 400, got 200"
+        ],
+        "warnings": [],
+        "response_data": {
+          "placements": {
+            "s1": {
+              "exec_format": "native",
+              "node_name": "worker-0",
+              "stage_id": "s1"
+            }
+          },
+          "plan_id": "plan-fd9f1889",
+          "predicted_energy_kwh": 0.0,
+          "predicted_latency_ms": 0.0,
+          "risk_score": 1.0,
+          "shadow_plan": {
+            "s1_backup": "worker-0"
+          }
+        }
+      }
+    ]
+  },
+  "kubernetes_check": {
+    "issues": [],
+    "improvements": []
+  }
+}

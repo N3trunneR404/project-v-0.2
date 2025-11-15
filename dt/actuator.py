@@ -11,6 +11,8 @@ from kubernetes.client import V1Pod
 from kubernetes.client.exceptions import ApiException
 
 from dt.state import Plan, Job, PlacementDecision, DTState
+from dt.cluster_manager import ClusterManager
+from dt.failures.event_generator import FailureEvent, FailureType
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +51,22 @@ except ImportError:
 class Actuator:
     """Kubernetes actuator for executing Digital Twin plans."""
     
-    def __init__(self, namespace: str = "dt-fabric") -> None:
+    def __init__(
+        self,
+        namespace: str = "dt-fabric",
+        cluster_manager: Optional[ClusterManager] = None
+    ) -> None:
         """
         Initialize the actuator with Kubernetes client.
         
         Args:
             namespace: Kubernetes namespace for pod creation
+            cluster_manager: Optional ClusterManager for multi-cluster support
         """
+        self.cluster_manager = cluster_manager
+        self.namespace = namespace
+        
+        # Initialize default client (for single-cluster mode)
         try:
             config.load_incluster_config()
             logger.info("Loaded in-cluster Kubernetes config")
@@ -67,7 +78,6 @@ class Actuator:
                 logger.warning(f"Could not load Kubernetes config: {e}")
         
         self.core = client.CoreV1Api()
-        self.namespace = namespace
     
     def _node_exists(self, node_name: str) -> bool:
         """
@@ -169,7 +179,23 @@ class Actuator:
                 compute_cpu = stage.compute.cpu if stage else 1
                 compute_mem_gb = stage.compute.mem_gb if stage else 1
                 
+                # Determine target cluster
+                target_cluster = None
+                core_api = self.core
+                
+                if self.cluster_manager:
+                    # Get cluster for the target node
+                    target_cluster = self.cluster_manager.get_cluster_for_node(decision.node_name)
+                    if target_cluster:
+                        # Get cluster-specific API client
+                        cluster_core_api = self.cluster_manager.get_core_api(target_cluster)
+                        if cluster_core_api:
+                            core_api = cluster_core_api
+                            logger.info(f"Using cluster '{target_cluster}' for node '{decision.node_name}'")
+                
                 # Generate V1Pod object from placement decision
+                # Use resource scaling (default 1:100)
+                from dt.scaling import DEFAULT_SCALER
                 pod = generate_pod_from_decision(
                     job_name=job.name,
                     decision=decision,
@@ -177,10 +203,12 @@ class Actuator:
                     namespace=self.namespace,
                     compute_cpu=compute_cpu,
                     compute_mem_gb=compute_mem_gb,
+                    duration_ms=stage.compute.duration_ms if stage else None,
+                    resource_scale=DEFAULT_SCALER.cpu_scale,
                 )
                 
-                # Create pod in Kubernetes
-                created_pod = self.core.create_namespaced_pod(
+                # Create pod in Kubernetes (in correct cluster)
+                created_pod = core_api.create_namespaced_pod(
                     namespace=self.namespace,
                     body=pod,
                 )
@@ -218,3 +246,41 @@ class Actuator:
             predicted_energy_kwh=0.0,
             risk_score=0.0,
         )
+    
+    def inject_failure(self, failure_event: FailureEvent) -> None:
+        """
+        Inject a failure event into the cluster.
+        
+        Args:
+            failure_event: Failure event to inject
+        """
+        try:
+            if failure_event.event_type == FailureType.NODE_DOWN:
+                if failure_event.target_node:
+                    self.cordon_node(failure_event.target_node)
+                    logger.info(f"Injected node_down failure for {failure_event.target_node}")
+            
+            elif failure_event.event_type == FailureType.THERMAL_THROTTLE:
+                # Simulate thermal throttling by reducing allocatable CPU
+                # This would require patching the node's allocatable resources
+                # For now, we just cordon the node as a proxy
+                if failure_event.target_node:
+                    logger.warning(f"Thermal throttle for {failure_event.target_node} (simulated as cordon)")
+                    self.cordon_node(failure_event.target_node)
+            
+            elif failure_event.event_type == FailureType.NETWORK_DEGRADATION:
+                # Network degradation would be handled by netem or Chaos Mesh
+                logger.info(f"Network degradation for {failure_event.target_cluster} (requires netem/Chaos Mesh)")
+            
+            elif failure_event.event_type == FailureType.SYSTEM_CRASH:
+                # System crash: cordon node and optionally kill pods
+                if failure_event.target_node:
+                    self.cordon_node(failure_event.target_node)
+                    # Optionally kill running pods on this node
+                    logger.info(f"Injected system_crash failure for {failure_event.target_node}")
+            
+            else:
+                logger.warning(f"Unknown failure type: {failure_event.event_type}")
+        
+        except Exception as e:
+            logger.error(f"Failed to inject failure {failure_event.event_type}: {e}")

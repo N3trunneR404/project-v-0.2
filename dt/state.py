@@ -88,10 +88,18 @@ class JobStage:
 
 
 @dataclass
+class JobOrigin:
+	"""Origin context for a job request."""
+	cluster: str
+	node: Optional[str] = None
+
+
+@dataclass
 class Job:
 	name: str
 	deadline_ms: int
 	stages: List[JobStage]
+	origin: Optional[JobOrigin] = None
 
 
 @dataclass
@@ -99,6 +107,25 @@ class PlacementDecision:
 	stage_id: str
 	node_name: str
 	exec_format: str  # native | qemu-<arch> | wasm | cuda
+
+
+@dataclass
+class ObservedMetrics:
+	"""Observed metrics for a plan execution."""
+	latency_ms: float
+	cpu_util: float = 0.0
+	mem_peak_gb: float = 0.0
+	energy_kwh: float = 0.0
+	completed_at: Optional[float] = None  # timestamp
+
+
+@dataclass
+class ClusterInfo:
+	"""Information about a cluster."""
+	name: str
+	cluster_type: str  # datacenter, mining, lab, gaming, pan, edge
+	resiliency_score: float = 0.8
+	nodes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -117,6 +144,8 @@ class DTState:
 		self._nodes: Dict[str, Node] = {}
 		self._links: Dict[Tuple[str, str], Link] = {}
 		self._jobs: Dict[str, Job] = {}
+		self.clusters: Dict[str, ClusterInfo] = {}
+		self.observed_metrics: Dict[str, ObservedMetrics] = {}  # plan_id -> ObservedMetrics
 		self._lock = threading.RLock()
 
 	def upsert_node(self, node: Node) -> None:
@@ -149,6 +178,78 @@ class DTState:
 		with self._lock:
 			key = tuple(sorted([link.a, link.b]))
 			self._links[key] = link
+
+	def update_node_telemetry(self, node_name: str, metrics: Dict[str, float]) -> None:
+		"""Update telemetry for a node."""
+		with self._lock:
+			node = self.get_node(node_name)
+			if node:
+				if 'cpu_util' in metrics:
+					node.tel.cpu_util = float(metrics['cpu_util'])
+				if 'mem_util' in metrics:
+					node.tel.mem_util = float(metrics['mem_util'])
+				if 'net_rx_mbps' in metrics:
+					node.tel.net_rx_mbps = float(metrics['net_rx_mbps'])
+				if 'net_tx_mbps' in metrics:
+					node.tel.net_tx_mbps = float(metrics['net_tx_mbps'])
+				if 'cpu_temp_c' in metrics:
+					node.tel.cpu_temp_c = float(metrics['cpu_temp_c'])
+				node.tel.last_heartbeat_s = time.time()
+
+	def record_pod_event(self, pod_event: Dict[str, any]) -> None:
+		"""Record a pod lifecycle event."""
+		with self._lock:
+			# Extract plan_id from pod labels
+			plan_id = pod_event.get('labels', {}).get('dt.plan_id')
+			if not plan_id:
+				return
+			
+			event_type = pod_event.get('type')  # Pending, Running, Succeeded, Failed
+			pod_name = pod_event.get('name', '')
+			
+			# If pod completed, we may want to collect final metrics
+			# This will be handled by the telemetry collector
+			if event_type in ('Succeeded', 'Failed'):
+				# Mark that we should collect final metrics for this plan
+				# The actual metrics collection happens in telemetry collector
+				pass
+
+	def record_observed_metrics(self, plan_id: str, metrics: ObservedMetrics) -> None:
+		"""Record observed metrics for a plan execution."""
+		with self._lock:
+			self.observed_metrics[plan_id] = metrics
+
+	def get_observed_metrics(self, plan_id: str) -> Optional[ObservedMetrics]:
+		"""Get observed metrics for a plan."""
+		with self._lock:
+			return self.observed_metrics.get(plan_id)
+
+	def get_cluster(self, node_name: str) -> Optional[str]:
+		"""Get cluster name for a node."""
+		with self._lock:
+			# Check if node has cluster info in k8s labels
+			node = self.get_node(node_name)
+			if node and node.k8s:
+				cluster_name = node.k8s.labels.get('dt.cluster.name')
+				if cluster_name:
+					return cluster_name
+			
+			# Try to infer from cluster node lists
+			for cluster_name, cluster_info in self.clusters.items():
+				if node_name in cluster_info.nodes:
+					return cluster_name
+			
+			# Try to infer from node name pattern
+			for cluster_name in self.clusters.keys():
+				if node_name.startswith(cluster_name):
+					return cluster_name
+			
+			return None
+
+	def register_cluster(self, cluster_info: ClusterInfo) -> None:
+		"""Register a cluster in the state."""
+		with self._lock:
+			self.clusters[cluster_info.name] = cluster_info
 
 	def list_nodes(self) -> List[Node]:
 		"""Return list of Node objects from the state."""

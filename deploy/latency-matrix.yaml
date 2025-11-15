@@ -1,0 +1,86 @@
+# Inter-cluster latency matrix for Digital Twin
+# Latencies are in milliseconds (ms)
+# Symmetric: latency from A to B equals B to A
+
+latencies:
+  # Data center core to other clusters
+  - from: "dc-core"
+    to: "prosumer-mining"
+    latency_ms: 15.0
+  - from: "dc-core"
+    to: "campus-lab"
+    latency_ms: 8.0
+  - from: "dc-core"
+    to: "gamer-pc"
+    latency_ms: 12.0
+  - from: "dc-core"
+    to: "phone-pan-1"
+    latency_ms: 45.0
+  - from: "dc-core"
+    to: "phone-pan-2"
+    latency_ms: 50.0
+  - from: "dc-core"
+    to: "edge-microdc"
+    latency_ms: 35.0
+
+  # Prosumer mining to other clusters
+  - from: "prosumer-mining"
+    to: "campus-lab"
+    latency_ms: 20.0
+  - from: "prosumer-mining"
+    to: "gamer-pc"
+    latency_ms: 18.0
+  - from: "prosumer-mining"
+    to: "phone-pan-1"
+    latency_ms: 55.0
+  - from: "prosumer-mining"
+    to: "phone-pan-2"
+    latency_ms: 60.0
+  - from: "prosumer-mining"
+    to: "edge-microdc"
+    latency_ms: 40.0
+
+  # Campus lab to other clusters
+  - from: "campus-lab"
+    to: "gamer-pc"
+    latency_ms: 10.0
+  - from: "campus-lab"
+    to: "phone-pan-1"
+    latency_ms: 38.0
+  - from: "campus-lab"
+    to: "phone-pan-2"
+    latency_ms: 42.0
+  - from: "campus-lab"
+    to: "edge-microdc"
+    latency_ms: 30.0
+
+  # Gamer PC to other clusters
+  - from: "gamer-pc"
+    to: "phone-pan-1"
+    latency_ms: 40.0
+  - from: "gamer-pc"
+    to: "phone-pan-2"
+    latency_ms: 45.0
+  - from: "gamer-pc"
+    to: "edge-microdc"
+    latency_ms: 32.0
+
+  # Phone PANs to other clusters
+  - from: "phone-pan-1"
+    to: "phone-pan-2"
+    latency_ms: 25.0
+  - from: "phone-pan-1"
+    to: "edge-microdc"
+    latency_ms: 20.0
+
+  # Phone PAN 2 to edge microdc
+  - from: "phone-pan-2"
+    to: "edge-microdc"
+    latency_ms: 22.0
+
+# Default latency for unlisted pairs (fallback)
+default_latency_ms: 100.0
+
+# Intra-cluster latency (within same cluster)
+intra_cluster_latency_ms: 0.5
+

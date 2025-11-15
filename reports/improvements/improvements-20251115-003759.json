@@ -1,0 +1,67 @@
+{
+  "timestamp": "20251115-003759",
+  "total": 7,
+  "by_priority": {
+    "high": 0,
+    "medium": 4,
+    "low": 3
+  },
+  "improvements": [
+    {
+      "file": "k8s_executor/pod_gen.py",
+      "type": "enhancement",
+      "priority": "medium",
+      "issue": "Resource requirements use defaults",
+      "suggestion": "Accept JobStage compute requirements as parameters and use them",
+      "location": "generate_pod_from_decision()"
+    },
+    {
+      "file": "dt/api.py",
+      "type": "feature",
+      "priority": "medium",
+      "issue": "No plan status query endpoint",
+      "suggestion": "Add GET /plan/<plan_id>/status to query pod status for a plan",
+      "benefit": "Allows clients to check if plans are executing successfully"
+    },
+    {
+      "file": "dt/api.py",
+      "type": "feature",
+      "priority": "low",
+      "issue": "No plan cancellation endpoint",
+      "suggestion": "Add DELETE /plan/<plan_id> to cancel and clean up pods",
+      "benefit": "Allows cancelling long-running or failed plans"
+    },
+    {
+      "file": "dt/actuator.py",
+      "type": "optimization",
+      "priority": "low",
+      "issue": "Pod creation is sequential",
+      "suggestion": "Create pods in parallel using asyncio or threading",
+      "benefit": "Faster plan execution for multi-stage jobs"
+    },
+    {
+      "file": "dt/api.py",
+      "type": "optimization",
+      "priority": "low",
+      "issue": "No response caching",
+      "suggestion": "Add caching for snapshot endpoint (state doesn't change frequently)",
+      "benefit": "Reduced load for monitoring/UI clients"
+    },
+    {
+      "file": "dt/api.py",
+      "type": "security",
+      "priority": "medium",
+      "issue": "No input validation for job specs",
+      "suggestion": "Add validation for CPU/memory limits, deadline ranges, etc.",
+      "benefit": "Prevent resource exhaustion attacks"
+    },
+    {
+      "file": "dt/actuator.py",
+      "type": "security",
+      "priority": "medium",
+      "issue": "No RBAC validation",
+      "suggestion": "Check service account permissions before attempting pod creation",
+      "benefit": "Better error messages and fail-fast behavior"
+    }
+  ]
+}
