@@ -480,6 +480,11 @@ class DTState:
         self.overrides_path = Path(overrides_path)
 
         self._lock = threading.RLock()
+        # Lightweight compatibility attributes expected by the simplified
+        # planner/API integration.
+        self.clusters: Dict[str, ClusterInfo] = {}
+        self.observed_metrics: Dict[str, ObservedMetrics] = {}
+        self._jobs: Dict[str, Job] = {}
         event_buf = max(32, safe_int(os.environ.get("FABRIC_DT_EVENT_BUFFER", 512), 512))
         # self._events = EventBus(maxlen=event_buf)  # EventBus not implemented yet
         # Simple stub for events
@@ -983,6 +988,30 @@ class DTState:
                 # Invalidate snapshot cache
                 self._invalidate_snapshot_locked()
 
+    def register_cluster(self, cluster_info: ClusterInfo) -> None:
+        """Register cluster metadata for compatibility with the planner."""
+        with self._lock:
+            self.clusters[cluster_info.name] = cluster_info
+
+    def get_cluster(self, node_name: str) -> Optional[str]:
+        """Return the cluster name for a given node, if available."""
+        with self._lock:
+            node_dict = self.nodes_by_name.get(node_name, {})
+            labels = (node_dict.get("k8s") or {}).get("labels", {})
+            cluster_label = labels.get("dt.cluster.name")
+            if cluster_label:
+                return cluster_label
+
+            for cluster_name, cluster_info in self.clusters.items():
+                if node_name in cluster_info.nodes:
+                    return cluster_name
+
+            for cluster_name in self.clusters.keys():
+                if node_name.startswith(cluster_name):
+                    return cluster_name
+
+            return None
+
     def list_nodes(self) -> List[Node]:
         """Return list of Node objects from the state."""
         with self._lock:
@@ -1042,6 +1071,22 @@ class DTState:
             } if node.k8s else {},
         }
         self.add_or_update_node(descriptor, persist=False, preserve_runtime=True)
+
+    def add_job(self, job: Job) -> None:
+        with self._lock:
+            self._jobs[job.name] = job
+
+    def get_job(self, job_name: str) -> Optional[Job]:
+        with self._lock:
+            return self._jobs.get(job_name)
+
+    def record_observed_metrics(self, plan_id: str, metrics: ObservedMetrics) -> None:
+        with self._lock:
+            self.observed_metrics[plan_id] = metrics
+
+    def get_observed_metrics(self, plan_id: str) -> Optional[ObservedMetrics]:
+        with self._lock:
+            return self.observed_metrics.get(plan_id)
 
     def add_or_update_node(
         self,
