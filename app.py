@@ -12,35 +12,58 @@ logger = logging.getLogger(__name__)
 
 
 def seed_state(state: DTState) -> None:
-	"""Seed the state with test nodes. Safe to call multiple times."""
-	# Clear existing nodes first (in case this is called multiple times)
-	if hasattr(state, 'nodes_by_name'):
-		state.nodes_by_name.clear()
-	elif hasattr(state, '_nodes'):
-		state._nodes.clear()
-	
-	# Minimal seed of a few nodes for local testing
-	for i in range(3):
-		hw = HardwareSpec(cpu_cores=4, base_ghz=3.5, memory_gb=8, arch="amd64", tdp_w=95.0)
-		rt = NodeRuntime(native_formats=["native"], emulation_support=["arm64", "riscv64"], wasm_support=True)
-		k8s = KubernetesInfo(
-			node_name=f"worker-{i}",
-			labels={"dt.zone": "zone-a", "dt.cluster.name": "dc-core"},
-			zone="zone-a",
-			allocatable_cpu=4.0,
-			allocatable_mem_gb=8.0
-		)
-		state.upsert_node(Node(name=f"worker-{i}", hardware=hw, runtime=rt, k8s=k8s))
-	
-	# Register default cluster if not already registered
-	if "dc-core" not in state.clusters:
-		cluster_info = ClusterInfo(
-			name="dc-core",
-			cluster_type="datacenter",
-			resiliency_score=0.9,
-			nodes=["worker-0", "worker-1", "worker-2"]
-		)
-		state.register_cluster(cluster_info)
+    """Seed the state with test nodes. Safe to call multiple times."""
+
+    try:
+        existing_nodes = {node.name for node in state.list_nodes()}
+    except Exception:
+        existing_nodes = set()
+
+    # Minimal seed of a few nodes for local testing
+    for i in range(3):
+        node_name = f"worker-{i}"
+        hw = HardwareSpec(cpu_cores=4, base_ghz=3.5, memory_gb=8, arch="amd64", tdp_w=95.0)
+        rt = NodeRuntime(native_formats=["native"], emulation_support=["arm64", "riscv64"], wasm_support=True)
+        k8s = KubernetesInfo(
+            node_name=node_name,
+            labels={"dt.zone": "zone-a", "dt.cluster.name": "dc-core"},
+            zone="zone-a",
+            allocatable_cpu=4.0,
+            allocatable_mem_gb=8.0,
+        )
+        node = Node(name=node_name, hardware=hw, runtime=rt, k8s=k8s)
+
+        if node_name in existing_nodes:
+            # Update existing node in place
+            try:
+                state.upsert_node(node)
+            except AttributeError:
+                if hasattr(state, "_nodes"):
+                    state._nodes[node_name] = node
+        else:
+            state.upsert_node(node)
+
+    # Register default cluster if not already registered
+    cluster_info = ClusterInfo(
+        name="dc-core",
+        cluster_type="datacenter",
+        resiliency_score=0.9,
+        nodes=["worker-0", "worker-1", "worker-2"],
+    )
+
+    try:
+        clusters = getattr(state, "clusters")
+    except AttributeError:
+        clusters = {}
+        setattr(state, "clusters", clusters)
+
+    if isinstance(clusters, dict) and "dc-core" in clusters:
+        return
+
+    if hasattr(state, "register_cluster"):
+        state.register_cluster(cluster_info)
+    else:
+        clusters[cluster_info.name] = cluster_info
 
 
 def build_app():
