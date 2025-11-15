@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import os
+import logging
+from pathlib import Path
+
 from dt.api import create_app
-from dt.state import DTState, Node, HardwareSpec, NodeRuntime, KubernetesInfo
+from dt.state import DTState, Node, HardwareSpec, NodeRuntime, KubernetesInfo, ClusterInfo
+from dt.cluster_manager import ClusterManager
+
+logger = logging.getLogger(__name__)
 
 
 def seed_state(state: DTState) -> None:
@@ -16,15 +23,49 @@ def seed_state(state: DTState) -> None:
 	for i in range(3):
 		hw = HardwareSpec(cpu_cores=4, base_ghz=3.5, memory_gb=8, arch="amd64", tdp_w=95.0)
 		rt = NodeRuntime(native_formats=["native"], emulation_support=["arm64", "riscv64"], wasm_support=True)
-		k8s = KubernetesInfo(node_name=f"worker-{i}", labels={"dt.zone": "zone-a"}, zone="zone-a", allocatable_cpu=4.0, allocatable_mem_gb=8.0)
+		k8s = KubernetesInfo(
+			node_name=f"worker-{i}",
+			labels={"dt.zone": "zone-a", "dt.cluster.name": "dc-core"},
+			zone="zone-a",
+			allocatable_cpu=4.0,
+			allocatable_mem_gb=8.0
+		)
 		state.upsert_node(Node(name=f"worker-{i}", hardware=hw, runtime=rt, k8s=k8s))
+	
+	# Register default cluster if not already registered
+	if "dc-core" not in state.clusters:
+		cluster_info = ClusterInfo(
+			name="dc-core",
+			cluster_type="datacenter",
+			resiliency_score=0.9,
+			nodes=["worker-0", "worker-1", "worker-2"]
+		)
+		state.register_cluster(cluster_info)
 
 
 def build_app():
-	"""Build the Flask app with seeded state."""
+	"""Build the Flask app with seeded state and cluster manager."""
 	state = DTState()
 	seed_state(state)
-	return create_app(state)
+	
+	# Initialize cluster manager with latency matrix
+	latency_matrix_path = os.getenv(
+		"LATENCY_MATRIX_PATH",
+		str(Path(__file__).parent / "deploy" / "latency-matrix.yaml")
+	)
+	
+	cluster_manager = None
+	if os.path.exists(latency_matrix_path):
+		try:
+			cluster_manager = ClusterManager(latency_matrix_path=latency_matrix_path)
+			logger.info(f"Initialized cluster manager with latency matrix: {latency_matrix_path}")
+		except Exception as e:
+			logger.warning(f"Failed to initialize cluster manager: {e}")
+			cluster_manager = None
+	else:
+		logger.info("Latency matrix not found, running in single-cluster mode")
+	
+	return create_app(state, cluster_manager=cluster_manager)
 
 
 # Build app at module level (for gunicorn)
